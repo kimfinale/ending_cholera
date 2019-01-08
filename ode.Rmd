@@ -5,53 +5,207 @@ editor_options:
   chunk_output_type: console
 ---
 
+### Two-patch SIRV model (Azman et al. (2015)
 ```{r}
-
-library(deSolve)
-vacc_ode <- function( t, y, parms ) {
-  r <- parms[ 1 ]
-  g <- parms[ 2 ]
+library( deSolve )
+source( "util/params.R")
+c <- contact_matrix
+two_patch_sirv <- function( t, y, parms ) {
+ 
+  N1 <- y[1] + y[2] + y[3] + y[4]
+  N2 <- y[5] + y[6] + y[7] + y[8]
+  I1 <- y[2]
+  I2 <- y[6]
+  I_N_p1 <- (I1*c[1,1]+I2*c[2,1])/(N1*c[1,1]+N2*c[2,1])
+  I_N_p2 <- (I1*c[1,2]+I2*c[2,2])/(N1*c[1,2]+N2*c[2,2])
   
-  dy1 <- -r * y[ 1 ]
-  dy2 <- + r * y[ 1 ] - g * y[ 2 ]
-  dy3 <- + g * y[ 2 ] 
+  lambda_1 <- c[1,1]*beta[1]*I_N_p1 + c[1,2]*beta[2]*I_N_p2
+  lambda_2 <- c[2,1]*beta[1]*I_N_p1 + c[2,2]*beta[2]*I_N_p2 
 
-  list(c(dy1, dy2, dy3))
+  dp1y1 <- -(lambda_1+ rho) * y[ 1 ]
+  dp1y2 <- + lambda_1 * y[ 1 ] - gamma * y[ 2 ]
+  dp1y3 <- + gamma * y[ 2 ]  + rho * y[ 1 ]
+  dp1y4 <- + rho *( N1 - y[ 4 ] )
+
+  dp2y1 <- -(lambda_2 + rho) * y[ 5 ]
+  dp2y2 <- + lambda_2 * y[ 5 ] - gamma * y[ 6 ]
+  dp2y3 <- + gamma * y[ 6 ]  + rho * y[ 5 ]
+  dp2y4 <- + rho *( N2 - y[ 8 ] )
+
+  list( c(dp1y1, dp1y2, dp1y3, dp2y4,dp2y1, dp2y2, dp2y3, dp2y4) )
 }
 
-yini <- c( y1 = 1, y2 = 0, y3 = 0 )
-times <- seq( from = 0, to = 60, by = 0.01)
+yini <- c( y1 = 0.99, y2 = 0.01, y3 = 0, y4 = 0, y5 = 0.99, y6 = 0.01, y7 = 0, y8 = 0 )
+times <- seq( from = 0, to = 1*182, by = 1)
 parms <- c( 0.02, 1/14 )
-out <- ode ( times = times, y = yini, func = vacc_ode, parms = parms )
+out <- ode ( times = times, y = yini, func = two_patch_sirv, parms = parms )
 # head (out, n = 3)
 class(out) <- "matrix" # without this, dplyr functions get error
 library(tidyverse)
 out <- tbl_df( out )
-colnames( out ) <- c( "Day", "S", "VS", "VP" )
+colnames( out ) <- c( "Day", "S", "I", "R", "V", "S2", "I2", "R2", "V2" )
 # write.csv( out, "sir_tr_05.csv", row.names = FALSE )
 out <- gather( out, var, num, - Day )
 out$var <- factor( out$var  )
-out$model <- "Numerical"
 
-## Analytical solutions
-r <- parms[1]
-g <- parms[2]
-t <- times
-S <- exp(-r*t)
-VS <- (r*exp(t*(-g-r))*(exp(g*t)-exp(r*t)))/(g-r)
-VP <- (exp(t*(-g-r))*(exp(r*t)*((g-r)*exp(g*t)+r)-g*exp(g*t)))/(g-r)
-
-df <- data.frame( Day = t, S = S, VS = VS, VP = VP )
-df <- gather( df, var, num, - Day )
-df$model <- "Analytical"
-
-d <- rbind( out, df )
-d$model <- factor( d$model )
+d <- out
 ggplot( d ) + 
     geom_line( aes( x=Day, y=num, color=var ) ) +
     labs( x="Time (day)", y="Fraction of population", color="Status" ) + 
-    facet_wrap(.~model)
     theme( legend.position=c(0.85,0.45) )
 
 
 ```
+
+
+
+```{r}
+
+n_patch_sirv <- function( t, y, parms ) {
+  np <- parms[1] # number of patches
+  c <- contact_matrix
+  ns <- 4 # number of state variables in each patch
+  dy <- y
+  N <- sapply( 1:np, function(x) sum( y[ (1+(x-1)*ns):(ns+(x-1)*ns) ] ) )
+  I <- sapply( 1:np, function(x) y[ 2+(x-1)*ns ] )
+  I_N_P_num <- sapply( 1:np, function(x) sum( I*c[1:np,x] ) )
+  I_N_P_denom <- sapply( 1:np, function(x) sum( N*c[1:np,x] ) )
+  I_N_p <- I_N_P_num / I_N_P_denom
+  lambda <- sapply( 1:np, function(x) sum( beta[x]*c[x,1:np]*I_N_p ) )
+
+  for( i in 1:np ){
+    dy[ 1 + ns*(i-1) ] <- -(lambda[ i ]+ rho) * y[ 1 + ns*(i-1) ]
+    dy[ 2 + ns*(i-1) ] <- + lambda[ i ] * y[ 1 + ns*(i-1) ] - gamma * y[ 2 + ns*(i-1) ]
+    dy[ 3 + ns*(i-1) ] <- + gamma * y[ 2 + ns*(i-1) ]  + rho * y[ 1 + ns*(i-1) ]
+    dy[ 4 + ns*(i-1) ] <- + rho *( N[ i ] - y[ 4 + ns*(i-1) ] )
+  }
+  
+  list( dy )
+}
+source( "util/params.R" )
+ns <- 4
+np <- 6
+yini <- rep( 0, ns*np )
+for( i in 1:np ){
+  yini[ 1+(i-1)*ns ] <- 0.99
+  yini[ 2+(i-1)*ns ] <- 0.01
+}
+parms <- np
+times <- seq( from = 0, to = 1*182, by = 1)
+library(deSolve)
+out <- ode ( times = times, y = yini, func = n_patch_sirv, parms = parms )
+class(out) <- "matrix" # without this, dplyr functions get error
+library(tidyverse)
+out <- tbl_df( out )
+
+chr_state <- c( "S", "I", "R", "V" )
+col_name <- as.vector( sapply( 1:np, function(x) paste0( chr_state, x ) ) )
+colnames( out ) <- c( "Day", col_name )
+# write.csv( out, "sir_tr_05.csv", row.names = FALSE )
+out <- gather( out, var, num, - Day )
+out$var <- factor( out$var  )
+out$patch <- paste0( "Patch ", 1 )
+len <- length(times) * ns 
+for( i in 2:4 ){
+  out$patch[ (1+len*(i-1)):(len*i) ] <- paste0( "Patch ", i )
+}
+# out$patch <- factor( out$patch )
+d <- out
+p1<- ggplot( dplyr::filter( d, patch == "Patch 1" ) ) + 
+  geom_line( aes( x=Day, y=num, color=var ) ) +
+  facet_wrap( . ~ patch ) +
+  labs( x="Time (day)", y="Fraction of population", color="Status" ) +
+  theme( legend.position=c(0.85,0.45) )
+ 
+
+p2 <- p1 %+%  dplyr::filter( d, patch == "Patch 2" ) 
+p3 <- p1 %+%  dplyr::filter( d, patch == "Patch 3" ) 
+p4 <- p1 %+%  dplyr::filter( d, patch == "Patch 4" ) 
+
+library(gridExtra)
+grid.arrange(p1,p2,p3,p4, ncol=1 )
+
+```
+
+```{r}
+
+n_patch_age_sirv <- function( t, y, parms ) {
+  np <- 4 # number of patches
+  c <- contact_matrix
+  ns <- 4 # number of state variables in each patch
+  nag <- 4 # number of age groups
+  cy <- nag*ns # one cycle (repeat) of indices to count all states (infectious states and age groups) for each patch
+  dy <- y
+  N <- sapply( 1:np, function(x) sum( y[ (1+(x-1)*cy):(x*cy) ] ) )
+  I <- sapply( 1:np, function(x) sum( y[ (5+(x-1)*cy):(8+(x-1)*cy) ] ) )
+  # I_N_P_num <- sapply( 1:np, function(x) sum( I*c[1:np,x] ) )
+  # I_N_P_denom <- sapply( 1:np, function(x) sum( N*c[1:np,x] ) )
+  # I_N_p <- I_N_P_num / I_N_P_denom
+  I_N_p <-  sapply( 1:np, function(x) sum( I*c[1:np,x] ) / sum( N*c[1:np,x] ) ) #fraction of infectious pop
+  lambda <- sapply( 1:np, function(x) sum( beta[x]*c[x,1:np]*I_N_p ) )
+  
+  for( i in 1:np ){
+    dy[ 1 + cy*(i-1) ] <- -(lambda[ i ]+ rho) * y[ 1 + cy*(i-1) ] - ag[ 1 ] * y[ 1 + cy*(i-1) ]
+    dy[ 1+nag + cy*(i-1) ] <- + lambda[ i ] * y[ 1 + cy*(i-1) ] - gamma * y[ 1+nag + cy*(i-1) ]  - ag[1] * y[ 1+nag + cy*(i-1)  ]
+    dy[ 1+2*nag + cy*(i-1) ] <- + gamma * y[ 1+nag + cy*(i-1) ]  + rho * y[ 1 + cy*(i-1) ]  - ag[1] * y[ 1+2*nag + cy*(i-1) ]
+    dy[ 1+3*nag + cy*(i-1) ] <- + rho *( N[ i ] - y[ 1+3*nag + cy*(i-1) ] ) - ag[ 1 ] * y[ 1+3*nag + cy*(i-1) ]
+    for( j in 2:nag ){
+      dy[ j + cy*(i-1) ] <- + ag[j-1] * y[ j-1 + cy*(i-1) ] -(lambda[ i ]+ rho) * y[ j + cy*(i-1) ] - ag[j] * y[ j + cy*(i-1) ]
+      dy[ j+nag + cy*(i-1) ] <- + ag[j-1] * y[ j-1+nag + cy*(i-1) ] + lambda[ i ] * y[ j + cy*(i-1) ] - gamma * y[ j+nag + cy*(i-1) ] - ag[j] * y[ j+nag + cy*(i-1) ]
+      dy[ j+2*nag + cy*(i-1) ] <- + ag[j-1] * y[ j-1+2*nag + cy*(i-1) ] + gamma * y[ j+nag + cy*(i-1) ]  + rho * y[1 + cy*(i-1)] - ag[j] * y[j+2*nag + cy*(i-1)]
+      dy[ j+3*nag + cy*(i-1) ] <- + ag[j-1] * y[ j-1+3*nag + cy*(i-1) ] + rho *( N[ i ] - y[ j+3*nag + cy*(i-1) ] ) - ag[j] * y[ j+3*nag + cy*(i-1) ]
+    }
+  }
+  
+  list( dy )
+}
+source( "util/params.R" )
+ns <- 4
+np <- 4
+nag <- 4
+cy <- ns*nag
+yini <- rep( 0, ns*np*nag )
+for( i in 1:np ){
+  yini[ 1+(i-1)*cy ] <- 0.99
+  yini[ 5+(i-1)*cy ] <- 0.01
+}
+parms <- np
+times <- seq( from = 0, to = 1*182, by = 1)
+library(deSolve)
+out <- ode ( times = times, y = yini, func = n_patch_age_sirv, parms = parms )
+class(out) <- "matrix" # without this, dplyr functions get error
+library(tidyverse)
+out <- tbl_df( out )
+out_agesummed <- sapply( 1:16, function(x) rowSums( out[ , (2+(x-1)*nag):(5+(x-1)*nag) ] ) )
+out <- cbind( out[,1], out_agesummed )
+
+chr_state <- c( "S", "I", "R", "V" )
+col_name <- as.vector( sapply( 1:np, function(x) paste0( chr_state, x ) ) )
+colnames( out ) <- c( "Day", col_name )
+out <- gather( out, var, num, - Day )
+out$var <- factor( out$var  )
+out$patch <- paste0( "Patch ", 1 )
+len <- length(times) * ns 
+for( i in 2:4 ){
+  out$patch[ (1+len*(i-1)):(len*i) ] <- paste0( "Patch ", i )
+}
+# out$patch <- factor( out$patch )
+d <- out
+p1<- ggplot( dplyr::filter( d, patch == "Patch 1" ) ) + 
+  geom_line( aes( x=Day, y=num, color=var ) ) +
+  facet_wrap( . ~ patch ) +
+  labs( x="Time (day)", y="Fraction of population", color="Status" ) +
+  theme( legend.position=c(0.85,0.45) )
+ 
+p2 <- p1 %+%  dplyr::filter( d, patch == "Patch 2" ) 
+p3 <- p1 %+%  dplyr::filter( d, patch == "Patch 3" ) 
+p4 <- p1 %+%  dplyr::filter( d, patch == "Patch 4" ) 
+
+library(gridExtra)
+grid.arrange(p1,p2,p3,p4, ncol=1 )
+```
+
+
+
+
+
