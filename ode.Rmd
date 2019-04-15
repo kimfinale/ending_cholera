@@ -141,7 +141,7 @@ n_patch_age_sirv <- function( t, y, parms ) {
   # I_N_P_num <- sapply( 1:np, function(x) sum( I*c[1:np,x] ) )
   # I_N_P_denom <- sapply( 1:np, function(x) sum( N*c[1:np,x] ) )
   # I_N_p <- I_N_P_num / I_N_P_denom
-  I_N_p <-  sapply( 1:np, function(x) sum( I*c[1:np,x] ) / sum( N*c[1:np,x] ) ) #fraction of infectious pop
+  I_N_p <-  sapply( 1:np, function(x) sum( I*c[1:np,x] ) / sum( N*c[1:np,x] ) ) #fraction of infectious population in each patch
   lambda <- sapply( 1:np, function(x) sum( beta[x]*c[x,1:np]*I_N_p ) )
   
   for( i in 1:np ){

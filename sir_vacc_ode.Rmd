@@ -1,0 +1,620 @@
+---
+title: 'Modeling the impact of vaccination'
+output:
+  html_document: default
+  html_notebook: default
+  fig.asp: 0.618
+  fig.width: 6
+  fig.align: center
+  html_notebook: default
+  out.width: 70%
+  pdf_document: default
+editor_options: 
+  chunk_output_type: console
+---
+# Model checking--total population size (R version)
+```{r}
+library( tidyverse )
+library( deSolve )
+source( "data/params.R" )
+source( "cholera_sirw.R" ) # cholera model
+tstop <- 55
+times <- seq( 0, tstop*365, 10 )
+params <- c( beta=0.4, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
+# Integrate ODEs
+out <- ode( y=sample_init_val, times=times, func=cholera_sirw_r, parms=params )
+
+S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
+I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
+R <- rowSums( out[ , (2+2*num_age_grp) : (3*num_age_grp+1) ] )
+V <- rowSums( out[ , (2+3*num_age_grp) : (4*num_age_grp+1) ] )
+N <- S + I + R + V
+df <- data.frame( t=(out[,1]/365),S=S, I=I, R=R, V=V, N=N )
+df_long <- tidyr::gather( df, inf_status, num, -t )
+# out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+# d <- filter( df_long, inf_status == "I" )
+ggplot( df_long ) + 
+    geom_line( aes( x=t, y=num, color=inf_status ) ) 
+
+```
+
+# Model check -- population size (Rcpp)
+```{r}
+library( tidyverse )
+library( deSolve )
+source( "data/params.R" )
+library(Rcpp)
+sourceCpp( "cholera_sirw_cpp.cpp" )
+
+tstop <- 60
+times <- seq( 0, tstop*365, 10 )
+params <- c( beta=0.25, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
+# Integrate ODEs
+# out <- ode( y=sample_init_val, times=times, func=cholera_sirw_cpp, parms=params 
+out <- rk( y=init_val, times=times, func=cholera_sirw_cpp, parms=params, method="rk45dp7" )
+
+S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
+I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
+R <- rowSums( out[ , (2+2*num_age_grp) : (3*num_age_grp+1) ] )
+V <- rowSums( out[ , (2+3*num_age_grp) : (4*num_age_grp+1) ] )
+N <- S + I + R + V
+df <- data.frame( t=(out[,1]/365),S=S, I=I, R=R, V=V, N=N )
+df_long <- tidyr::gather( df, inf_status, num, -t )
+# out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+# d <- filter( df_long, inf_status == "I" )
+ggplot( df_long ) +
+    geom_line( aes( x=t, y=num, color=inf_status ) )
+
+```
+
+# Equilibrium distribution to the initial condition
+```{r}
+init_val <- dput(tail(out,1)[2:(4*num_age_grp+1)])
+init_val <- c( init_val, rep(0,2*num_age_grp) )
+dput( init_val )
+```
+
+# Model check -- annual incidence by age group
+```{r}
+library( tidyverse )
+library( deSolve )
+source( "data/params.R" )
+library(Rcpp)
+sourceCpp( "cholera_sirw_cpp.cpp" )
+
+tstop <- 60
+times <- seq( 0, tstop*365, 365 )
+params <- c( beta=0.25, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
+# Integrate ODEs
+out <- rk( y=init_val, times=times, func=cholera_sirw_cpp, parms=params, method="rk45dp7" )
+nag <- num_age_grp
+S <- out[ , 2 : (nag+1) ]
+I <- out[ , (2+nag) : (2*nag+1) ]
+R <- out[ , (2+2*nag) : (3*nag+1) ]
+V <- out[ , (2+3*nag) : (4*nag+1) ]
+CI <- out[ ,(2+4*nag) : (5*nag+1) ]
+CV <- out[ ,(2+5*nag) : (6*nag+1) ]
+N <- S + I + R + V
+annual_CI <- CI[2:nrow(CI),] - CI[1:(nrow(CI)-1),]
+pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
+  
+annual_CI_pyo <- annual_CI / pyo
+tail(annual_CI_pyo)  
+
+```
+
+# Annual incidence 
+```{r}
+# calculate the incidence at the final year 
+annual_incidence <- function( FUN = NULL, params=NULL, init_val=NULL, tstop=NA ){
+    if( !is.function(FUN) ) 
+      stop("argument FUN is not a function!")
+   # to get yearly output as the unit time in the model is 365 days
+    source( "data/params.R" )
+    if( is.na(tstop) )
+      tstop <- 60
+    if( is.null(params) )
+      params <- c( beta=0.3, gamma=1/5 )
+    if( is.null(init_val) )
+      init_val <- sample_init_val / sum(sample_init_val)
+      
+    times <- seq( 0, tstop*365, 365 )
+    # Integrate ODEs
+    out <- ode( y=init_val, times=times, func=FUN, parms=params )
+    nag <- num_age_grp
+    S <- out[ , 2 : (nag+1) ]
+    I <- out[ , (2+nag) : (2*nag+1) ]
+    R <- out[ , (2+2*nag) : (3*nag+1) ]
+    V <- out[ , (2+3*nag) : (4*nag+1) ]
+    CI <- out[ ,(2+4*nag) : (5*nag+1) ]
+    N <- S + I + R + V
+    annual_CI <- CI[2:nrow(CI),] - CI[1:(nrow(CI)-1),]
+    pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
+    annual_CI_pyo <- annual_CI / pyo
+    tail( annual_CI_pyo, 1)  
+}  
+```
+
+
+```{r}
+# neg_log_lik
+# function to calculate sum of negative log likelihood
+# input is set to have one compoent, par, to ease the use of optim function
+neg_log_lik <- function( params=NULL, data=NULL, init_val=NULL ){
+  stopifnot( length(params) == 5, length(data) == 8, !is.null(init_val_java), !is.null(run_java) )
+
+  inc_model <- annual_incidence(FUN=cholera_sirw_cpp, params=params, tstop=tstop  )
+  # assume Poisson distribution 
+  neg_log_lik <- - sum( dpois( data, lambda=inc_rate_model, log=TRUE ) )
+}
+```
+
+# parameter estimation
+```{r}
+rm( list=ls() )
+
+source( "data/params.R" )
+
+
+t_stop <- 80
+
+
+start_pool <- seq( 1,50, length.out=5 )
+fit_list <- list()
+lower_bounds <- rep( 1E-24, 5 )
+upper_bounds <- c( 1000, 10, 1, 1000, 1000 )
+for( i in 5:5 ) {
+# start <- c( 1, 0.1, 0.1, 1, 1 )
+start <- c( beta=start_pool[i], chi_1=0.1, chi_2=0.5, chi_3=0.01, chi_4=0.1 )
+
+cat( "i=", i, "\n")
+fit <- optimx::optimx( par = start, 
+                  fn = neg_log_lik,
+                  lower = lower_bounds, 
+                  upper = upper_bounds,
+                  method = "nlminb",
+                  # itnmax = 100,
+                  control = list(trace=3),
+                  data = inc_rate_obs, 
+                  init_val = init_val )
+
+fit_list[[i]] <- fit
+}
+obj <- list( fit_results = fit_list, init_pop = y0, par_start = start_pool, t_stop = t_stop )
+obj_name <- paste0( "data/fit_tstop_", t_stop, ".rds" )
+saveRDS( obj, obj_name )
+```
+
+
+```{r}
+# out <- rk( y=yini, times=t_steps, func=derivs, parms=pars, method="rk45ck" )
+# > class(out)
+# [1] "deSolve" "matrix" 
+class(out) <- "matrix" # without this, dplyr functions get error
+out <- tbl_df( out )
+colnames( out ) <- c( "t", "S", "I", "R" )
+out <- gather( out, inf_status, num, -t )
+out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+out <- filter( out, inf_status == "I" )
+
+ggplot( out ) + 
+    geom_line( aes( x=t, y=num, color=inf_status ) ) +
+    geom_line( aes( x=t, y=num ), color="red" ) +
+    scale_colour_manual( values=c(S="blue",I="red",R="green") ) +
+    scale_y_continuous( limits=c(0,520) ) +
+    scale_x_continuous( limits=c(0,30) ) +
+    labs( x="Time (year)", y="Number of infected people" )
+    labs( x="Time (year)", y="Number of infected people", color="Infection status" )
+    theme( legend.position=c(0.85,0.45) ) +
+    annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) +
+    annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=122, y=1000, size=4, colour="red" )
+
+# ggsave( "sir_i_bir_seas_10-24yr.png" )
+```
+
+### 1. Solving the logistic equation that describes population growth
+```{r}
+library( tidyverse )
+K <- 10
+r <- 1  #  dy/dt = r*y*(1-y/K)
+y0 <- 20
+
+derivs <- function( t, y, pars ){
+    list( r * y * (1-y/K) )
+}
+
+library(deSolve)
+times <- seq( 0, 20, 0.2 )
+
+out <- ode( y=y0, times=times, func = derivs, parms = NULL )
+
+class( out ) <- "matrix"
+out <- tbl_df( out )
+colnames( out ) <- c( "t", "y" )
+
+ggplot( out ) + 
+    geom_line( aes(x=t,y=y ) ) +
+    labs( x="Time (day)", y="Number of people" ) + 
+    theme( legend.position=c(0.85,0.45) ) +
+    annotate( "text", label=paste0("r == ", r), parse=T, x=17, y=9, size=4, colour="red" ) +
+    annotate( "text", label=paste0("y0 == ", y0), parse=T, x=19, y=9, size=4, colour="red" ) 
+```
+
+### 2. Solving the Lorenz model
+```{r}
+library( tidyverse )
+
+derivs <- function( t, y, pars ){
+    X <- y[ 1 ]
+    Y <- y[ 2 ]
+    Z <- y[ 3 ]
+    a <- pars[ 1 ]
+    b <- pars[ 2 ]
+    c <- pars[ 3 ]
+    
+    dXdt = a * X + Y * Z
+    dYdt = b * ( Y - Z )
+    dZdt = - X*Y + c*Y - Z;
+    
+    list( c( dXdt, dYdt, dZdt) )
+}
+
+library(deSolve)
+times <- seq( 0, 100, 0.01 )
+pars <- c( a=-8/3, b=-10, c=28 )
+y0 <- c( X=1, Y=1, Z=1 )
+
+out <- ode( y=y0, times=times, func = derivs, parms = pars )
+
+class( out ) <- "matrix"
+out <- tbl_df( out )
+out <- gather( out, var, val, -time )
+ggplot( out ) + 
+    geom_line( aes( x=time,y=val, color=var ) ) +
+    labs( x="Time (day)", y="Number of people" )
+
+ggplot( out ) + 
+    geom_line( aes( x=time,y=val, color=var ) ) +
+    labs( x="Time (day)", y="Number of people" )
+
+
+```
+
+
+### 2. Solving ODEs for SIR model by manually writing the forward Euler method
+```{r}
+library( tidyverse )
+beta <- 0.2
+gamma <- 0.1
+
+dt <- 1
+t_end <- 200
+t_steps <- seq( 0, t_end, by=dt )
+t_num <- length(t_steps)
+S <- I <- R <- rep( NA, t_num ) 
+S0 <- 999
+I0 <- 1
+R0 <- 0
+
+S[ 1 ] <- S0
+I[ 1 ] <- I0
+R[ 1 ] <- R0
+
+for( i in 1 : (t_num-1) ){
+    N <- S[ i ] + I[ i ] + R[ i ] 
+    dS <- - beta * S[ i ] * I [i ] / N
+    dI <- beta * S[ i ] * I[ i ] / N - gamma * I[ i ]
+    dR <- gamma * I[ i ]
+    
+    S[ i+1 ] <- S[ i ] + dS * dt ## forward Euler method: y1 = y0 + h*f(x0,y0), y' = f(x0,y0)
+    I[ i+1 ] <- I[ i ] + dI * dt 
+    R[ i+1 ] <- R[ i ] + dR * dt 
+    
+}
+
+out <- data_frame( t=t_steps, S=S, I=I, R=R )
+out <- gather( out, inf_status, num, -t )
+out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+ggplot( out ) + 
+    geom_line( aes(x=t,y=num, color=inf_status ) ) +
+    labs( x="Time (day)", y="Number of people", color="Infection status" ) + 
+    theme( legend.position=c(0.85,0.45) ) +
+    annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) +
+    annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=122, y=1000, size=4, colour="red" )
+
+# ggsave( "dt.pdf" )
+```
+
+### 3. Solve ODEs using the deSolve package
+```{r}
+library( tidyverse )
+library( deSolve )
+
+derivs <- function( t, y, pars ){
+    S <- y[ 1 ]
+    I <- y[ 2 ]
+    R <- y[ 3 ]
+    N <- S + I + R
+    beta <- pars[1]
+    gamma <- pars[2]
+    
+    dS <- - beta * S * I / N
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I
+    
+    return( list( c( dS, dI, dR ) ) )
+    
+}
+beta <- 0.2
+gamma <- 0.1
+pars <- c( beta, gamma )
+t_end <- 200
+dt <- 0.1
+t_steps <- seq( 0, t_end, dt )
+S0 <- 999
+I0 <- 1
+R0 <- 0
+yini <- c( S0, I0, R0 )
+out <- ode( y=yini, times=t_steps, func=derivs, parms=pars )
+# out <- rk( y=yini, times=t_steps, func=derivs, parms=pars, method="rk45ck" )
+# > class(out)
+# [1] "deSolve" "matrix" 
+class(out) <- "matrix" # without this, dplyr functions get error
+out <- tbl_df( out )
+colnames( out ) <- c( "t", "S", "I", "R" )
+out <- gather( out, inf_status, num, -t )
+out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+out <- filter( out, inf_status == "I" )
+ggplot( out ) + 
+    geom_line( aes( x=t, y=num, color=inf_status ) ) +
+    scale_colour_manual( values=c(S="blue",I="red",R="green") ) +
+    scale_y_continuous( limits=c(0,1000) ) +
+    labs( x="Time (day)", y="Number of people", color="Infection status" ) + 
+    theme( legend.position=c(0.85,0.45) ) +
+    annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) +
+    annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=122, y=1000, size=4, colour="red" )
+
+# ggsave( "sir_i.png" )
+# ggsave( "sir_i.pdf" )
+```
+
+### 3. Simulation of a measles epidemic
+```{r}
+library( tidyverse )
+library( deSolve )
+
+derivs <- function( t, y, pars ){
+    S <- y[ 1 ]
+    I <- y[ 2 ]
+    R <- y[ 3 ]
+    N <- S + I + R
+    beta0 <- pars[1]
+    beta1 <- pars[2]
+    c <- pars[3]
+    gamma <- pars[4]
+    nu <- pars[5]
+    beta <- beta0 * (1 + beta1*sin(2*pi*(t + c)) )
+    v <- pars[6]
+    if( t < 15 ) { v <- 0 } # vaccination takes place only after year 15
+    dS <- - beta * S * I / N + nu*N*(1-vacc) - nu*S
+    dI <- beta * S * I / N - gamma * I - nu*I
+    dR <- gamma * I - nu*R + nu*N*vacc
+    
+    return( list( c( dS, dI, dR ) ) )
+    
+}
+# biennial epidemics
+beta <- 0.5*365
+gamma <- (1/15)*365
+R <- beta/gamma
+nu <- 1/15
+beta0 <- beta
+beta1 <- 8.8
+c <- 0.25
+vacc <- 0.3
+# beta <- 1.0*365
+# gamma <- 0.1*365
+# nu <- 0/10
+# beta0 <- beta
+# beta1 <- 0
+# c <- -0.75
+pars <- c( beta0, beta1, c, gamma, nu, vacc  )
+t_end <- 50
+dt <- 0.002
+t_steps <- seq( 0, t_end, dt )
+S0 <- 9990
+I0 <- 10
+R0 <- 0
+yini <- c( S0, I0, R0 )
+out <- ode( y=yini, times=t_steps, func=derivs, parms=pars )
+# out <- rk( y=yini, times=t_steps, func=derivs, parms=pars, method="rk45ck" )
+# > class(out)
+# [1] "deSolve" "matrix" 
+class(out) <- "matrix" # without this, dplyr functions get error
+out <- tbl_df( out )
+colnames( out ) <- c( "t", "S", "I", "R" )
+out <- gather( out, inf_status, num, -t )
+out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+out <- filter( out, inf_status == "I" )
+
+ggplot( out ) + 
+    # geom_line( aes( x=t, y=num, color=inf_status ) ) +
+    geom_line( aes( x=t, y=num ), color="red" ) +
+    # scale_colour_manual( values=c(S="blue",I="red",R="green") ) +
+    scale_y_continuous( limits=c(0,520) ) +
+    scale_x_continuous( limits=c(0,30) ) +
+    labs( x="Time (year)", y="Number of infected people" )
+    # labs( x="Time (year)", y="Number of infected people", color="Infection status" ) 
+    # theme( legend.position=c(0.85,0.45) ) +
+    # annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) +
+    # annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=122, y=1000, size=4, colour="red" )
+
+# ggsave( "sir_i_bir_seas_10-24yr.png" )
+```
+
+
+
+### 3-1. Modeling through generational basis
+```{r}
+library( tidyverse )
+beta <- 0.2
+gamma <- 0.1
+R0 <- 2
+dt <- 1
+median_inf_period <- 6.738122
+t_end <- 200
+t_steps <- seq( 0, t_end, by=median_inf_period )
+t_num <- length(t_steps)
+S <- I <- R <- rep( NA, t_num ) 
+S_init <- 999
+I_init <- 1
+R_init <- 0
+
+S[ 1 ] <- S_init
+I[ 1 ] <- I_init
+R[ 1 ] <- R_init
+
+for( i in 1 : (t_num-1) ){
+    N <- S[ i ] + I[ i ] + R[ i ] 
+    
+    new_inf <- S[ i ] * ( 1 - exp( - R0 * I [ i ] / N ) )
+
+    S[ i+1 ] <- S[ i ] - new_inf## forward Euler method: y1 = y0 + h*f(x0,y0), y' = f(x0,y0)
+    I[ i+1 ] <- new_inf
+    R[ i+1 ] <- R[ i ] + I[ i ] 
+    
+}
+
+out <- data_frame( t=t_steps, S=S, I=I, R=R )
+out <- gather( out, inf_status, num, -t )
+out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+
+ggplot( out ) + 
+    geom_line( aes(x=t,y=num, color=inf_status ) ) +
+    labs( x="Time (day)", y="Number of people", color="Infection status" ) + 
+    theme( legend.position=c(0.85,0.45) ) +
+    annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) +
+    annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=122, y=1000, size=4, colour="red" )
+
+# ggsave( "gen.png" )
+
+```
+### 3. Cholera transmission
+```{r}
+cholera_model <- function( t, y, params ){
+    source( "data/params.R" )
+    S <- y[ 1 : num_age_grp ]
+    I <- y[ (1+num_age_grp) : (2*num_age_grp) ]
+    R <- y[ (1+2*num_age_grp) : (3*num_age_grp) ]
+    V <- y[ (1+3*num_age_grp) : (4*num_age_grp) ]
+    # 
+    dSdt <- rep( 0, num_age_grp )
+    dIdt <- rep( 0, num_age_grp )
+    dRdt <- rep( 0, num_age_grp )
+    dVdt <- rep( 0, num_age_grp )
+    
+    
+    beta <- params[ 1 ]
+    gamma <- params[ 2 ]
+    
+    # Derived variables
+    N <- sum( S ) + sum( I ) + sum( R ) + sum( V )
+    mu <- death_rate
+    births <- birth_rate / sum(sample_Y0)
+    
+    foi <- beta * sum(I) / N
+    dCVdt <- rep( 0, num_age_grp )
+    dCIdt <- rep( 0, num_age_grp )
+    
+	  for( i in  1:num_age_grp ) {
+	    if( i == 1 ){
+	      dSdt[i] = + births - (foi*rel_susc[i] + mu[i] + vacc_rate_campaign[i] + ag[i])*S[i]
+  	    dIdt[i] = + foi*rel_susc[i]*S[i] - (mu[i] + ag[i] + gamma)*I[i]
+  	    dRdt[i] = + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + vacc_rate_campaign[i])*R[i]
+  	    dVdt[i] = + vacc_rate_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i]		
+	    } else {
+	      dSdt[i] = + ag[i-1]*S[i-1] - (foi*rel_susc[i] + mu[i] + vacc_rate_campaign[i] + ag[i])*S[i]
+	      dIdt[i] = + ag[i-1]*I[i-1] + foi*rel_susc[i]*S[i] - (mu[i] + ag[i] + gamma)*I[i]
+	      dRdt[i] = + ag[i-1]*R[i-1] + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + vacc_rate_campaign[i])*R[i]
+	      dVdt[i] = + ag[i-1]*V[i-1] + vacc_rate_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i]
+	    }
+	    dCVdt[i] <- vacc_rate_campaign[i]*(S[i] + R[i]) # cumulative number of vaccine doses by age group
+	    dCIdt[i] = foi*rel_susc[i]*S[i] # cumulative incidence by age group
+	  }
+    
+    dydt <- c( dSdt, dIdt, dRdt, dVdt, dCIdt, dCVdt )
+    list( dydt )
+}
+```
+<!-- ### 4. Calling an agent-based SIR model written in Java using the rJava package -->
+<!-- ```{r} -->
+<!-- library( rJava ) -->
+<!-- library( tidyverse ) -->
+
+<!-- .jinit( force.init=TRUE ) # starts a Java virtual machine -->
+<!-- path_parallel_colt_lib <- "C:/Program Files/Java/lib/ParallelColt/parallelcolt-0.9.4.jar" -->
+<!-- path_sir_agent_model <- "C:/Users/jonghoon.kim/Documents/Workspace/Eclipse/SIR_Agent_Based/bin" -->
+<!-- .jaddClassPath( path_sir_agent_model ) -->
+<!-- .jaddClassPath( path_parallel_colt_lib ) -->
+<!-- pars <- .jnew( "Parameters" ) -->
+<!-- model <- .jnew( "Model" ) -->
+
+<!-- .jcall( pars, "V", "setNumInitInfected", 9L ) -->
+<!-- .jcall( pars, "V", "setTransmissionRate", 0.3 ) -->
+
+<!-- beta <- .jcall( pars, "D", "getTransmissionRate" ) -->
+<!-- gamma <- .jcall( pars, "D", "getRecoveryRate" ) -->
+
+<!-- arr <- .jcall( model, "[[D", "runModel", pars ) -->
+<!-- out <- sapply( arr, .jevalArray ) -->
+<!-- out <- t( out ) -->
+
+<!-- out <- tbl_df( out ) -->
+<!-- colnames( out ) <- c( "t", "S", "I", "R" ) -->
+<!-- out <- gather( out, inf_status, num, -t ) -->
+<!-- out$inf_status <- factor( out$inf_status, levels=c("S","I","R") ) -->
+
+<!-- ggplot( out ) +  -->
+<!--     geom_line( aes( x=t, y=num, color=inf_status ) ) + -->
+<!--     labs( x="Time (day)", y="Number of people", color=NULL ) +  -->
+<!--     theme( legend.position=c(0.90,0.45) ) + -->
+<!--     annotate( "text", label=paste0("beta == ", beta), parse=T, x=100, y=1000, size=4, colour="red" ) + -->
+<!--     annotate( "text", label=paste0("gamma == ", gamma), parse=T, x=120, y=1000, size=4, colour="red" ) -->
+
+<!-- # ggsave( "sir_agent_based.png" ) -->
+
+<!-- ``` -->
+
+
+
+#### Q#1: Estimate the $\beta$ and $\gamma$ using the SIR model
+(Taken from p.17 of "An Introduction to Mathematical Epidemiology" by Maia Martcheva)
+
+In January and February 1978, an epidemic of influenza occurred in a boarding
+school in the North of England. The boarding school housed a total of 763 boys, all
+of whom were at risk during the epidemic. The spring term began on January 10.
+The boys returned from their Christmas vacation spent at many different locations in
+the world. A boy returning from Hong Kong exhibited elevated temperature during
+the period 15-18 January. On January 22, three boys were sick. Table 1 gives the
+number of boys ill on the $n$th day beginning January 22 ($n=1$).
+
+Table 1. Daily number of influenza-infected boys
+
+| Day | No. infected<sup>a</sup> | Day  | No. infected<sup>a</sup>  |
+| --- |------------:| -- | ---------: |
+| 3   | 25             | 9  |  192    |
+| 4   | 75             | 10 |  126    |
+| 5   | 227            | 11 |  71     |
+| 6   | 296            | 12 |  28     |
+| 7   | 258            | 13 |  11     |
+| 8   | 236            | 14 |  7      |
+<sup>a</sup>Data taken from "Influenza in a Boarding School," British Medical Journal, 4 March 1978
+
+
+
