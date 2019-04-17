@@ -5,6 +5,7 @@ editor_options:
   chunk_output_type: console
 ---
 
+
 ### Two-patch SIRV model (Azman et al. (2015)
 ```{r}
 library( deSolve )

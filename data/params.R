@@ -1,6 +1,15 @@
-num_age_grp <- 10L
+nag <- num_age_grp <- 10L
+index_S <- (1:nag) + 1 # first index (column) will be time
+index_I <- index_S + nag
+index_R <- index_S + 2*nag
+index_V <- index_S + 3*nag
+index_CI <- index_S + 4*nag
+index_CV <- index_S + 5*nag
+
+
 beta <- 0.2
 gamma <- 1/7
+
 ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 8) ) # <1, 1-4, 5-14, 15-24, ... 65-74, 75-84
 # Vaccination
 vacc_cov_campaign <- rep( 0, num_age_grp )
@@ -11,7 +20,7 @@ vacc_rate_campaign <- - log(1-vacc_cov_campaign) / dur_campaign
 case_fatality <- rep( 0, num_age_grp )
 #
 rel_susc <- rep( 1, num_age_grp )
-susc_age_grp <- list( 1, 2, 3, 4:10 ) # age group 4:9 are assumed to have the same susceptibility
+frac_report <- 1
 
 init_val <- c( 0.019129528368344, 0.0674741649748425, 0.126429307827068, 0.0936790567827395, 
                 0.0689075046855928, 0.0497120079378464, 0.0339845165599162, 0.0202690060767594, 
@@ -22,6 +31,10 @@ init_val <- c( 0.019129528368344, 0.0674741649748425, 0.126429307827068, 0.09367
                 0.000594187298716229, 0.0109978614296745, 0.0673712858210493, 
                 0.0949157764370814, 0.112867457328733, 0.121100057079751, 0.11573977692341, 
                 0.0902496016197851, 0.0488325131992378, 0.0146789226129884, rep(0, 30) )
+
+# age_dist <- c(0.0197355143778444, 0.0785144833380155, 0.19388015561387, 0.188653785468154, 
+#               0.181818325520221, 0.170843348793713, 0.149745679946106, 0.11053136298595, 
+#               0.0579275053971021, 0.0171353877418492)
 # # rates are given per year
 death_rate <-read.csv("data/death_rate.csv")
 death_rate <- death_rate[["Indonesia"]]
@@ -31,6 +44,9 @@ birth_rate <- birth_rate[["Indonesia"]]
 # incidence rates per 100.000 person-years of observation  
 # <2 yr, 2-4 yr, 5-9 yr, 10-19 yr, 20-29 yr, 30-39 yr, 40-49 yr, 50-65 yr,
 inc_rate_obs <- as.integer( 
-  c( 67.20430108, 225.660864, 499.197718, 301.1815584, 99.59332725, 40.67934506, 42.89390906, 11.83712121, 11.83712121 ) )
+  c( 67.20430108, 225.660864, 499.197718, 301.1815584, 99.59332725, 40.67934506, 42.89390906, 11.83712121, 11.83712121, 11.83712121 ) )
 
+nag <- num_age_grp
+iag <- index_age_all_states <- lapply( 1:10, function(x) c(x, nag+x, 2*nag+x, 3*nag+x) )
+age_dist <- sapply( iag, function(x) sum(init_val[x]))/sum(init_val)
 
