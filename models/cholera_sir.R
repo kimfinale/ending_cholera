@@ -1,4 +1,4 @@
-cholera_sirw_r <- function( t, y, params ){
+cholera_sir_r <- function( t, y, params ){
   source( "data/params.R" )
   S <- y[ 1 : num_age_grp ]
   I <- y[ (1+num_age_grp) : (2*num_age_grp) ]
