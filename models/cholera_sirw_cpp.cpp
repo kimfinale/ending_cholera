@@ -3,7 +3,7 @@ using namespace Rcpp;
 
 
 // [[Rcpp::export]]
-List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
+List cholera_sirw_cpp( double t, NumericVector y, NumericVector params ){
 
   NumericVector ag = Environment::global_env()["ag"];
   NumericVector init_val = Environment::global_env()["init_val"];

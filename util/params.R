@@ -7,19 +7,21 @@ index_CI <- index_S + 4*nag
 index_CV <- index_S + 5*nag
 
 
-beta <- 0.2
-gamma <- 1/7
-
+beta <- 1.2  # transmission rate will be calibrated  
+gamma <- 1/2 # 2 days for the duration of infectiousness Weil et al. (2009) Clin Infect Dis 
+omega <- 1/(3*365) # 3 years for the duration of natural immunity Ali et al. (2011) J Infect Dis
 ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 8) ) # <1, 1-4, 5-14, 15-24, ... 65-74, 75-84
 # Vaccination
 vacc_cov_campaign <- rep( 0, num_age_grp )
 vacc_cov_routine <- rep( 0, num_age_grp )
 dur_campaign <- 14.0
-vacc_eff <- rep( 0, num_age_grp )
+vacc_eff <- rep( 0, nag )
+vacc_eff[1:2] <- 0.3 #Bi et al.(2017) Lancet Infect Dis
+vacc_eff[3:nag] <- 0.64 #Bi et al.(2017) Lancet Infect Dis
 vacc_rate_campaign <- - log(1-vacc_cov_campaign) / dur_campaign
-case_fatality <- rep( 0, num_age_grp )
+case_fatality <- rep( 0, nag )
 #
-rel_susc <- rep( 1, num_age_grp )
+rel_susc <- rep( 1, nag )
 frac_report <- 1
 
 init_val <- c( 0.019129528368344, 0.0674741649748425, 0.126429307827068, 0.0936790567827395, 
@@ -42,10 +44,13 @@ birth_rate <-read.csv("data/birth_rate.csv")
 birth_rate <- birth_rate[["Indonesia"]]
 
 # incidence rates per 100.000 person-years of observation  
-# <2 yr, 2-4 yr, 5-9 yr, 10-19 yr, 20-29 yr, 30-39 yr, 40-49 yr, 50-65 yr,
-inc_rate_obs <- as.integer( 
-  c( 67.20430108, 225.660864, 499.197718, 301.1815584, 99.59332725, 40.67934506, 42.89390906, 11.83712121, 11.83712121, 11.83712121 ) )
+# <2 yo, 2-4 yo, 5-9 yo, 10-19 yo, 20-29 yo, 30-39 yo, 40-49 yo, 50-65 yo,
+# inc_obs <- as.integer( 
+#   c( 67.20430108, 225.660864, 499.197718, 301.1815584, 99.59332725, 40.67934506, 42.89390906, 11.83712121, 11.83712121, 11.83712121 ) )
 
+inc_obs_Jakarta <- as.integer( c( 4.01, 1.55, 0.29, 0.27 )*100 )# <1 yo, 1-4 yo, 5-14 yo, 15+ yo per 10^5 person-years
+inc_obs <- inc_obs_Jakarta
+tstop <- 100 
 nag <- num_age_grp
 iag <- index_age_all_states <- lapply( 1:10, function(x) c(x, nag+x, 2*nag+x, 3*nag+x) )
 age_dist <- sapply( iag, function(x) sum(init_val[x]))/sum(init_val)

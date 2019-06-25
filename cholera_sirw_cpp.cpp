@@ -3,7 +3,7 @@ using namespace Rcpp;
 
 
 // [[Rcpp::export]]
-List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
+List cholera_sirw_cpp( double t, NumericVector y, NumericVector params ){
 
   NumericVector ag = Environment::global_env()["ag"];
   NumericVector init_val = Environment::global_env()["init_val"];
@@ -17,7 +17,6 @@ List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
   double birth_rate = Environment::global_env()["birth_rate"];
   double gamma = Environment::global_env()["gamma"];
   int num_age_grp = Environment::global_env()["num_age_grp"];
-  double frac_report = Environment::global_env()["frac_report"];
   
   NumericVector vacc_rate_campaign( 9 );
   vacc_rate_campaign = - log(1-vacc_cov_campaign) / dur_campaign;
@@ -34,24 +33,15 @@ List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
   NumericVector dCVdt( num_age_grp );
   NumericVector dCIdt( num_age_grp );
     
-  // double beta = params[ "beta" ];
-  // // double gamma = params[ "gamma" ];
-  // rel_susc[ 0 ] = params[ "chi_1" ];
-  // rel_susc[ 1 ] = params[ "chi_2" ];
-  // rel_susc[ 2 ] = params[ "chi_3" ];
-  // for(int i = 3; i < num_age_grp; ++i){
-  //   rel_susc[ i ] = params[ "chi_4" ];
-  // }
-  double beta = params[ 0 ];
+  double beta = params[ "beta" ];
   // double gamma = params[ "gamma" ];
-  rel_susc[ 0 ] = params[ 1 ];
-  rel_susc[ 1 ] = params[ 2 ];
-  rel_susc[ 2 ] = params[ 3 ];
-  // for(int i = 3; i < num_age_grp; ++i){
-  //   rel_susc[ i ] = params[ 4 ];
-  // }
+  rel_susc[ 0 ] = params[ "chi_1" ];
+  rel_susc[ 1 ] = params[ "chi_2" ];
+  rel_susc[ 2 ] = params[ "chi_3" ];
+  for(int i = 3; i < num_age_grp; ++i){
+    rel_susc[ i ] = params[ "chi_4" ];
+  }
   // double sum_init_val = sum( init_val );
-  // double frac_report = params[ 4 ];
   double births = birth_rate;
   
   // Rprintf("the value of beta : %f \n", beta );
@@ -72,13 +62,13 @@ List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
        dVdt[i] = + ag[i-1]*V[i-1] + vacc_rate_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i];
      }
      
-     dCIdt[i] = frac_report*foi*rel_susc[i]*S[i]; 
+     dCIdt[i] = foi*rel_susc[i]*S[i]; 
      dCVdt[i] = vacc_rate_campaign[i]*(S[i] + R[i]);
    }
    
   //output
   NumericVector out( init_val.size() );
-  // out = c( dSdt, dIdt, dRdt, dVdt, dCIdt, dCVdt  );
+  
   for(int i = 0; i < num_age_grp; ++i) {
     out[ i ] = dSdt[i];
     out[ i + num_age_grp ] = dIdt[i];
@@ -88,6 +78,6 @@ List cholera_sir_cpp( double t, NumericVector y, NumericVector params ){
     out[ i + 5*num_age_grp ] = dCVdt[i];
   }
   return ( List::create( out ) );
-  // return List::create( dSdt, dIdt, dRdt, dVdt, dCIdt, dCVdt );
+  // return ( List::create( dSdt, dIdt, dRdt, dVdt, dCIdt, dCVdt ) );
     
 }

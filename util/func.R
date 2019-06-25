@@ -1,7 +1,7 @@
-# calculate the incidence at the final year 
-annual_incidence <- function( tstop=600, dt=365, integ_method="rk45dp7", params=NULL ){
-  # if( !is.function(FUN) ) 
-  #   stop("Argument FUN is not a function!")
+# calculate the incidence rate per person at the final year
+annual_inc_tstop <- function( params, fun, tstop, dt=365, integ_method="rk45dp7" ){
+  if( !is.function(fun) )
+    stop("Argument fun is not a function!")
   library(deSolve)
   if( is.na(tstop) )
     stop("Please provide the stop time!")
@@ -9,12 +9,11 @@ annual_incidence <- function( tstop=600, dt=365, integ_method="rk45dp7", params=
     stop("Please provide the initial values!")
   if( is.null(params) )
     stop("Please provide the parameter values!")
+  
   nday <- 365
   times <- seq( 0, tstop*nday, dt )
-  # Integrate ODEs
-  out <- rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method=integ_method )
-  # thin output by year
-  thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )
+  out <- rk( y=init_val, times=times, func=fun, parms=params, method=integ_method )  # Integrate ODEs
+  thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )  # thin output by year
   out <- out[ thin_row, ] # make sure that the output appears by year
   S <- out[ , index_S ]
   I <- out[ , index_I ]
@@ -23,16 +22,17 @@ annual_incidence <- function( tstop=600, dt=365, integ_method="rk45dp7", params=
   CI <- out[ , index_CI ]
   CV <- out[ , index_CV ]
   N <- S + I + R + V
-  annual_CI <- CI[ 2:nrow(CI), ] - CI[1:(nrow(CI)-1),]
-  pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
+  annual_CI <- CI[ 2:nrow(CI), ] - CI[1:(nrow(CI)-1), ]
+  pyo <- ( N[1:tstop,] + N[2:(tstop+1),] )/2 # beginning of the two consecutive years  
   annual_CI_pyo <- annual_CI / pyo
   
-  tail( annual_CI_pyo, 1 )  
+  list( annual_inc_pyo = tail( annual_CI_pyo, 1 ),
+        steady_pop = tail( N, 1 ) )
 }
 
 annual_inc_steady <- function( params, ... ){
   library(rootSolve)
-  y <- runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=params, hmin=0.1, hmax=4 )
+  y <- runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=params, hmin=1e-3, hmax=4 )
   out <- y$y
   S <- out[ index_S-1 ]
   I <- out[ index_I-1 ]
@@ -42,13 +42,13 @@ annual_inc_steady <- function( params, ... ){
   foi <- params[1]*sum(I)/sum(N)
   rel_susc <- rep(1,nag)
   rel_susc[1:3] <- params[2:4]
-  new_inf <- frac_report*foi*rel_susc*S;
+  new_inf <- frac_report*foi*rel_susc*S
   annual_new_inf_pyo <- new_inf*365/N
   return( annual_new_inf_pyo )
 }  
 
 compute_R0 <- function( params ){
-  rel_susc <- rep(1,nag)
+  rel_susc <- rep( 1, nag )
   rel_susc[1:3] <- params[2:4]
   R0 <- (params[1]/gamma)*sum(rel_susc*age_dist)
   return( R0 )
@@ -66,23 +66,32 @@ compute_R0 <- function( params ){
 #   (-1)*sum( dpois( data, lambda=inc_model*100000, log=TRUE ) )
 # }
 
-neg_log_lik <- function( params=NULL, data=NULL ){
-  if( is.null(data) ){
-    data <- inc_rate_obs
-  }
-  if( sum(params<0) > 0 | compute_R0(params) <= 1 ){
-      return ( Inf )
-  } else{  
-    inc_model <- annual_inc_steady( params=params )
-    return( (-1)*sum( dpois( data, lambda=inc_model*100000, log=TRUE ) ) )
+neg_log_lik <- function( params, data, fun ){
+  if( sum(params<0) > 0 | compute_R0(params) <= 1 | compute_R0(params) >= 20 ){
+    return ( Inf )
+  } else {
+    return( (-1)*sum( dpois( data, lambda=inc_model( fun, params, pyo=1e5 ), log=TRUE ) ) )
   }
 }
 
-
-log_lik <- function ( params ) {
-  inc_model <- annual_inc_steady( params=params )
-  sum( dpois( inc_rate_obs, lambda=inc_model*100000, log=TRUE ) )
+inc_model <- function( params, fun, tstop, pyo ){
+  # ir <- annual_inc_steady( params=params )
+  ir <- annual_inc_tstop( params=params, fun=fun, tstop=tstop )
+  inc_pyo <- ir$annual_inc_pyo*ir$steady_pop/sum(ir$steady_pop)*pyo
+  inc_model <- rep( NA, 4 ) # inc_obs is a global variable
+  inc_model[1] <- inc_pyo[1]
+  inc_model[2] <- inc_pyo[2]
+  inc_model[3] <- inc_pyo[3]
+  inc_model[4] <- sum( inc_pyo[4:10] )
+  
+  return( inc_model )
 }
+
+
+log_lik <- function ( params, data, fun, tstop ) {
+  sum( dpois( data, lambda=inc_model( params=params, pyo=1e5, fun=fun, tstop=tstop ), log=TRUE ) )
+}
+
 
 # Prior distribution
 log_prior<- function( params ){
@@ -100,18 +109,23 @@ log_prior<- function( params ){
   
 }
 
-log_posterior <- function( params ){
+log_posterior <- function( params, data, fun, tstop ){
   # R0 needs to be larger than 1, but not too large  (e.g., 20), in which case ode integrating routine may complain
   # Also, Ro won't be that high and in fact, it will be safe to assume that R0 will be lower than 10
   # parameters have to be positive
-  if( sum(params<0) > 0 | compute_R0(params) <= 1 | compute_R0(params) >= 10 ){
+  # if( is.null(data) ){
+  #   data = inc_obs_Jakarta;
+  # }
+  
+  if( sum(params<0) > 0 | compute_R0(params) <= 1 | compute_R0(params) >= 20 ){
     return ( -Inf )
-  } else {  
-    return ( log_lik(params) + log_prior(params) )
+  } else {
+    # cat( "log_posterior, ", params[1], ", ", params[2], ", ", params[3], ", ", params[4], "\n" )
+    return ( log_lik( params=params, data=data, fun=fun, tstop=tstop ) + log_prior(params) )
   }
 }
 
-run_MCMC <- function( startvalue=c(0.2,1,1,1), iter=100, burnin = round(iter/2), scale=rep(0.1,4), show_progress_bar=TRUE ){
+run_MCMC <- function( startvalue=c(0.2,1,1,1), iter=100, burnin = round(iter/2), scale=rep(0.1,4), show_progress_bar=TRUE, data, fun, tstop ){
   if (show_progress_bar) {
     pb <- txtProgressBar( min=0, max=iter, style=3 )
   }
@@ -121,31 +135,33 @@ run_MCMC <- function( startvalue=c(0.2,1,1,1), iter=100, burnin = round(iter/2),
   npar <- length( startvalue )
   chain = matrix( NA, nrow=iter, ncol=(npar+1) ) # unknown parameters + likelihood store
   chain[ 1, 1:npar ] <-  startvalue
-  chain[ 1, (npar+1) ] <- log_posterior( chain[1,1:npar] )
+  # chain[ 1, (npar+1) ] <- log_posterior( data, chain[1,1:npar] )
+  chain[ 1, (npar+1) ] <- log_posterior( data=data, params=chain[1,1:npar], fun=fun, tstop=tstop )
   
   for (i in 2:iter) {
     # proposal function
     if (show_progress_bar && i%%update_step == 0) {
       setTxtProgressBar(pb, i)
     }
-    proposal <- rnorm( 4, mean = chain[(i-1),1:4], sd = scale )
+    proposal <- rnorm( 4, mean = chain[(i-1),1:4], sd = sqrt(scale) )
     # repeat{
     #   proposal <- rnorm( 4, mean = chain[(i-1),1:4], sd = scale )
     #   if( sum(proposal<0) == 0 & compute_R0(proposal) > 1 ){
     #     break
     #   }
     # }
-    posterior_proposal <- log_posterior( proposal )
+    # posterior_proposal <- log_posterior( data, proposal )
+    posterior_proposal <- log_posterior( data=data, params=proposal, fun=fun )
     alpha <- exp( posterior_proposal - chain[ (i-1), (npar+1) ] )
     # cat( "\niter = ", i, ", log density = ", posterior_proposal, ", log density prev = ", chain[ (i-1), (npar+1) ], ", alpha = ", alpha )
-    if (!is.finite(alpha)){ 
+    if( !is.finite(alpha) ){ 
       alpha <- 0
     }
     if( runif(1) < alpha ) {
       chain[ i, 1:npar ] <- proposal
       chain[ i, (npar+1) ] <- posterior_proposal
       accept[ i ] <- 1
-      # cat( "\niter = ", i, ", accepted parameters:", chain[ i,],"\n")
+      # cat( "\niter = ", i, ", proposal accepted:", chain[ i,],"\n")
     } else { 
       chain[ i, 1:npar ] <- chain[ (i-1), 1:npar ]
       chain[ i, (npar+1)] <- chain[ (i-1), (npar+1) ]
@@ -154,7 +170,7 @@ run_MCMC <- function( startvalue=c(0.2,1,1,1), iter=100, burnin = round(iter/2),
   # cat( "\nAcceptance ratio = ", sum(accept[(burnin + 1):iter]) / (iter - burnin), "\n" )
   
   list( theta = chain[ (burnin + 1):iter, (1:npar)],
-        log_posterior = chain[ (burnin + 1):iter, (npar+1)], 
+        loglik_posterior = chain[ (burnin + 1):iter, (npar+1)], 
         acceptance_ratio = sum(accept[(burnin + 1):iter]) / (iter - burnin))
  
 }

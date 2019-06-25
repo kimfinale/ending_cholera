@@ -16,13 +16,13 @@ editor_options:
 ```{r}
 library( tidyverse )
 library( deSolve )
-source( "util/params.R" )
-source( "models/cholera_sir.R" ) # cholera model
+source( "data/params.R" )
+source( "cholera_sirw.R" ) # cholera model
 tstop <- 55
 times <- seq( 0, tstop*365, 10 )
 params <- c( beta=0.4, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
 # Integrate ODEs
-out <- ode( y=init_val, times=times, func=cholera_sir_r, parms=params )
+out <- ode( y=sample_init_val, times=times, func=cholera_sirw_r, parms=params )
 
 S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
 I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
@@ -39,27 +39,21 @@ ggplot( df_long ) +
 
 ```
 
-# Rcpp Model check -- population size
+# Model check -- population size (Rcpp)
 ```{r}
-rm(list=ls())
-library( deSolve )
 library( tidyverse )
-source( "util/params.R" )
-library( Rcpp )
-sourceCpp( "models/cholera_sir_cpp.cpp" )
+library( deSolve )
+source( "data/params.R" )
+library(Rcpp)
+sourceCpp( "cholera_sirw_cpp.cpp" )
 
-tstop <- 600
-nday <- 365
-dt <- 365
-times <- seq( 0, tstop*365, dt )
-params <- c( beta=0.45, chi_1=1, chi_2=1, chi_3=1, chi_4=1, frac_report=1 )
+tstop <- 60
+times <- seq( 0, tstop*365, 10 )
+params <- c( beta=0.25, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
 # Integrate ODEs
-# out <- ode( y=init_val, times=times, func=cholera_sir_cpp, parms=params )
-out <- rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method="rk45dp7", hmax=4, hmin=0.2 )
-if( dt != 365 ){
-  thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )
-  out <- out[ thin_row, ]
-}
+# out <- ode( y=sample_init_val, times=times, func=cholera_sirw_cpp, parms=params 
+out <- rk( y=init_val, times=times, func=cholera_sirw_cpp, parms=params, method="rk45dp7" )
+
 S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
 I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
 R <- rowSums( out[ , (2+2*num_age_grp) : (3*num_age_grp+1) ] )
@@ -71,44 +65,31 @@ df_long <- tidyr::gather( df, inf_status, num, -t )
 
 # d <- filter( df_long, inf_status == "I" )
 ggplot( df_long ) +
-  geom_line( aes( x=t, y=num, color=inf_status ) ) +
-  labs( x="Time (year)", y = "Number", color = "State")
+    geom_line( aes( x=t, y=num, color=inf_status ) )
+
 ```
 
-# Equilibrium distribution of age groups
-```{r}
-N <- sapply( iag, function(x) rowSums( out[ , x+1 ] ) ) # +1 b/c the first column is time in the output
-tail( N, 1 )
-
-library(rootSolve)
-ss <- runsteady(y=init_val, func=cholera_sir_cpp, parms=params )
-ss$y
-sapply( iag, function(x) sum( ss$y[ x ] ) )
-```
-
-# Equilibrium distribution
+# Equilibrium distribution to the initial condition
 ```{r}
 init_val <- dput(tail(out,1)[2:(4*num_age_grp+1)])
 init_val <- c( init_val, rep(0,2*num_age_grp) )
 dput( init_val )
-
-library(rootSolve)
-ss <- runsteady(y=init_val, func=cholera_sir_cpp, parms=params )
 ```
 
 # Model check -- annual incidence by age group
 ```{r}
 library( tidyverse )
 library( deSolve )
-source( "util/params.R" )
+source( "data/params.R" )
 library(Rcpp)
-sourceCpp( "models/cholera_sir_cpp.cpp" )
+sourceCpp( "cholera_sirw_cpp.cpp" )
 
-tstop <- 600
+tstop <- 60
 times <- seq( 0, tstop*365, 365 )
-params <- c( beta=1.0, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
+params <- c( beta=0.25, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
 # Integrate ODEs
-out <- rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method="rk45dp7" )
+out <- rk( y=init_val, times=times, func=cholera_sirw_cpp, parms=params, method="rk45dp7" )
+nag <- num_age_grp
 S <- out[ , 2 : (nag+1) ]
 I <- out[ , (2+nag) : (2*nag+1) ]
 R <- out[ , (2+2*nag) : (3*nag+1) ]
@@ -124,356 +105,87 @@ tail(annual_CI_pyo)
 
 ```
 
-# Maximum likelihood parameter estimation
+# Annual incidence 
 ```{r}
-rm( list=ls() )
-library( deSolve )
-source( "util/params.R" )
-source( "util/func.R" )
-library(Rcpp)
-library(optimx)
-# sourceCpp( "models/cholera_sir_cpp.cpp" )
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-# tstop <- 600
-lower_bounds <- c( 1e-3, 1e-3, 1e-3, 1e-3)
-upper_bounds <- c( 1e3, 1e3, 1e3, 1e3 )
-start <- c( 1.3, 10, 1, 0.1 )
-tic <- Sys.time()
-fit <- optimx( par = start, 
-               fn = neg_log_lik,
-               lower = lower_bounds, 
-               upper = upper_bounds,
-               method = "nlminb",
-               itnmax = 100,
-               control = list(trace=5), 
-               data = inc_obs_Jakarta )
-elapsed <- Sys.time() - tic
-
-params <- sapply( 1:4, function(x) eval(parse(text=paste0("fit$p",x)))) 
-# R0_approx = beta*
-#   (chi_1*0.01973551 + chi_2*0.07851448 + chi_3*0.1938802 + chi_4*( 0.1886538 + 0.1818183 + 0.1708433 +  0.1497457 +  0.1105314 +  0.05792751 +  0.01713539)
-# x <- seq( 0.14, 0.2, 0.01)
-# y<- x
-# for( i in seq_along(x)){
-#   cat( "i = ",i )
-#   y[i]<- neg_log_lik( param=x[i], tstop = 200 )
-#   cat( ", par = ", x[i], ", nll = ",y[i],"\n")
-# }
-# fit_list[[i]] <- fit
-# 
-# obj <- list( fit_results = fit_list, init_pop = y0, par_start = start_pool, t_stop = t_stop )
-# obj_name <- paste0( "data/fit_tstop_", t_stop, ".rds" )
-# saveRDS( obj, obj_name )
+# calculate the incidence at the final year 
+annual_incidence <- function( FUN = NULL, params=NULL, init_val=NULL, tstop=NA ){
+    if( !is.function(FUN) ) 
+      stop("argument FUN is not a function!")
+   # to get yearly output as the unit time in the model is 365 days
+    source( "data/params.R" )
+    if( is.na(tstop) )
+      tstop <- 60
+    if( is.null(params) )
+      params <- c( beta=0.3, gamma=1/5 )
+    if( is.null(init_val) )
+      init_val <- sample_init_val / sum(sample_init_val)
+      
+    times <- seq( 0, tstop*365, 365 )
+    # Integrate ODEs
+    out <- ode( y=init_val, times=times, func=FUN, parms=params )
+    nag <- num_age_grp
+    S <- out[ , 2 : (nag+1) ]
+    I <- out[ , (2+nag) : (2*nag+1) ]
+    R <- out[ , (2+2*nag) : (3*nag+1) ]
+    V <- out[ , (2+3*nag) : (4*nag+1) ]
+    CI <- out[ ,(2+4*nag) : (5*nag+1) ]
+    N <- S + I + R + V
+    annual_CI <- CI[2:nrow(CI),] - CI[1:(nrow(CI)-1),]
+    pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
+    annual_CI_pyo <- annual_CI / pyo
+    tail( annual_CI_pyo, 1)  
+}  
 ```
 
 
-# Markov Chain Monte Carlo parameter estimation 
 ```{r}
-rm( list=ls() )
-source( "util/params.R" )
-source( "util/func.R" )
-library(Rcpp)
-sourceCpp( "models/cholera_sir_cpp.cpp" )
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-start <- c( 2.8, 1, 0.1, 1 )
-tic <- Sys.time()
-samp <- run_MCMC( startvalue = start, iter=10000, scale=c(0.005,0.1,0.1,0.1) )
-Sys.time() - tic
-samp$acceptance_ratio
-hist(samp$theta[,1], main = "theta_1")
-acf(samp$theta)
-```
+# neg_log_lik
+# function to calculate sum of negative log likelihood
+# input is set to have one compoent, par, to ease the use of optim function
+neg_log_lik <- function( params=NULL, data=NULL, init_val=NULL ){
+  stopifnot( length(params) == 5, length(data) == 8, !is.null(init_val_java), !is.null(run_java) )
 
-# Reverse engineering
-```{r}
-rm( list=ls() )
-library( deSolve )
-source( "util/params.R" )
-source( "util/func.R" )
-library( Rcpp )
-sourceCpp( "models/cholera_sir_cpp.cpp" )
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-# Generate data
-params_true <- c( 1.3, 1, 3, 0.4 )
-# ir <- annual_inc_steady( params=params_true )
-ir <- annual_inc_tstop( params=params_true, fun=cholera_sir_cpp, tstop=60 )
-inc_mean <- ir$annual_inc_pyo*ir$steady_pop/sum(ir$steady_pop)*1e5 # assume a population of 100,000
-inc_sample <- rpois( length(inc_mean), inc_mean ) #sample
-# reset global variable b/c the log_posterior function needs a global variables, inc_obs
-inc_obs[1:3] <- inc_sample[1:3] # <1 yo, 1-4 yo, 5-14 yo
-inc_obs[4] <- sum( inc_sample[4:10] ) # 15-64 yo
-inc_obs <- round( inc_obs )
-start <- c( 0.8, 1, 0.5, 1 )
-tic <- Sys.time()
-mcmc <- run_MCMC( data=inc_obs, fun=cholera_sir_smpl_cpp, startvalue=start, iter=1000, scale=c(0.01,0.2,0.2,0.2) )
-Sys.time() - tic
-mcmc$acceptance_ratio
-hist(mcmc$theta[,1], main = "theta_1")
-acf(mcmc$theta)
-
-library(adaptMCMC)
-mcmc_adt <- MCMC( p=log_posterior, n=2000, init=start, scale=c(0.01,0.2,0.2,0.2), adapt=TRUE, acc.rate=0.234, fun=cholera_sir_cpp, data=inc_obs, tstop=60 )
-# tic <- Sys.time()
-```
-
-```{r}
-library(coda)
-chain<- mcmc(samp$samples)
-summary(chain)
-plot(chain)
-library(BayesianTools)
-correlationPlot(data.frame(chain))
-combinedchains = mcmc.list(chain, chain2)
-plot(combinedchains)
-gelman.diag(combinedchains)
-gelman.plot(combinedchains)
-
-```
-
-# Fitting Jarkarta data
-```{r}
-rm( list=ls() )
-source( "util/params.R" ) # includes Jakarta data
-source( "util/func.R" )
-library(Rcpp)
-# sourceCpp( "models/cholera_sir_cpp.cpp" )
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-library(adaptMCMC)
-start <- c( 0.3, 1, 1, 1 )
-tic <- Sys.time()
-samp <- run_MCMC( data=inc_obs_Jakarta, startvalue = start, iter=100000, scale=c(0.02,0.1,0.1,0.1) )
-Sys.time() - tic
-```
-
-```{r}
-library(Rcpp)
-sourceCpp( "models/run_mcmc_cpp.cpp" )
-```
-
-```{r}
-rm( list=ls() )
-source( "util/params.R" ) # includes Jakarta data
-source( "util/func.R" )
-library(Rcpp)
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-library(adaptMCMC)
-start <- c( 0.3, 1, 1, 1 )
-tic <- Sys.time()
-samp <- MCMC( p=log_posterior, n=20000, init=start, scale=c(0.01,0.02,0.02,0.02), adapt=TRUE, acc.rate=0.234 )
-Sys.time() - tic
-```
-
-```{r}
-library(coda)
-chain<- mcmc(samp$samples)
-summary(chain)
-plot(chain)
-library(BayesianTools)
-correlationPlot(data.frame(chain))
-combinedchains = mcmc.list(chain, chain2)
-plot(combinedchains)
-gelman.diag(combinedchains)
-gelman.plot(combinedchains)
-```
-
-```{r}
-
-```
-
-#Parallel 
-```{r}
-library(adaptMCMC)
-samp <- MCMC( log_posterior, n=1000, init=start, scale=c(0.005,0.1,0.1,0.1), adapt=FALSE)
-samp_adt <- MCMC( p=log_posterior, n=2000, init=start, scale=c(0.01,0.2,0.2,0.2), adapt=TRUE, acc.rate=0.234 )
-library(coda)
-hist( samp_adt$samples[1000:2000,1] )
-hist( samp_adt$samples[1000:2000,2] )
-hist( samp_adt$samples[1000:2000,3] )
-hist( samp_adt$samples[1000:2000,4] )
-str(samp)
-summary(samp_adt$samples)
-plot( samp_adt$samples[,2] )
-
-## ----------------------
-## plot density and samples
-
-x1 <- seq(-15, 15, length=80)
-x2 <- seq(-15, 15, length=80)
-x3 <- seq(-15, 15, length=80)
-x4 <- seq(-15, 15, length=80)
-
-d.banana <- matrix(apply(expand.grid(x1, x2), 1,  p.log), nrow=80)
-
-par(mfrow=c(1,2))
-image(x1, x2, exp(d.banana), col=cm.colors(60), asp=1, main="no adaption")
-contour(x1, x2, exp(d.banana), add=TRUE, col=gray(0.6))
-lines(samp.1$samples, type='b', pch=3)
-
-image(x1, x2, exp(d.banana), col=cm.colors(60), asp=1, main="with adaption")
-contour(x1, x2, exp(d.banana), add=TRUE, col=gray(0.6))
-lines(samp.2$samples, type='b', pch=3)
-```
-
-
-# Steady-state solution
-
-```{r}
-rm( list=ls() )
-library( deSolve )
-source( "util/params.R" )
-source( "util/func.R" )
-library(Rcpp)
-sourceCpp( "models/cholera_sir_cpp.cpp" )
-library(rootSolve)
-params=c(0.26,1,3,1)
-
-frac_report = 1
-rel_susc <- rep(1,nag)
-rel_susc[1:3] <- params[2:4]
-tstop <- 600
-nday <- 365
-dt <- 365
-times <- seq( 0, tstop*365, dt )
-
-t0 = Sys.time()
-y = rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method="rk45dp7", hmin=0.2, hmax=4 )
-Sys.time() - t0
-thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )
-out <- y[ thin_row, ] # make sure that the output appears by year
-S <- out[ , index_S ]
-I <- out[ , index_I ]
-R <- out[ , index_R ]
-V <- out[ , index_V ]
-CI <- out[ , index_CI ]
-CV <- out[ , index_CV ]
-N <- S + I + R + V
-annual_CI <- CI[2:nrow(CI), ] - CI[1:(nrow(CI)-1),]
-pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
-annual_CI_pyo <- annual_CI / pyo
-tail( annual_CI_pyo, 1 )  
-# 
-# y2 = runsteady( y=init_val, func=cholera_sir_cpp, parms=params, stol=1e-6, hmin=0.1, hmax=5 )
-# out <- y2$y
-# frac_report=1
-# S <- out[ index_S ]
-# I <- out[ index_I ]
-# R <- out[ index_R ]
-# V <- out[ index_V ]
-# N <- S + I + R + V
-# foi <- params[1]*sum(I)/sum(N)
-# rel_susc <- rep( 1, nag )
-# newI <- frac_report*foi*rel_susc*S;
-# newI*365/N
-#   
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-t0 = Sys.time()
-y3 = runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=params, hmin=0.2, hmax=4 )
-Sys.time() - t0
-out <- y3$y
-
-S <- out[ index_S-1 ]
-I <- out[ index_I-1 ]
-R <- out[ index_R-1 ]
-V <- out[ index_V-1 ]
-N <- S + I + R + V
-foi <- params[1]*sum(I)/sum(N)
-newI <- frac_report*foi*rel_susc*S;
-newI*365/N
-
-```
-
-# Steady-state comparison
-```{r}
-rm(list=ls())
-library( deSolve )
-source( "util/params.R" )
-source( "util/func.R" )
-library(Rcpp)
-sourceCpp( "models/cholera_sir_cpp.cpp" )
-library(rootSolve)
-sourceCpp( "models/cholera_sir_smpl_cpp.cpp" )
-
-# d <- matrix(nrow=50,ncol=4)
-nr <- 20
-params_pool <- matrix( nrow=nr, ncol=4 )
-params_pool[,1] <- rnorm( nr, 0.3, 0.2 )
-params_pool[,2] <- rnorm( nr, 1, 0.5 )
-params_pool[,3] <- rnorm( nr, 1, 0.5 )
-params_pool[,4] <- rnorm( nr, 1, 0.5 )
-rel_susc <- matrix(1, nrow=nr, ncol=10 )
-
-# hist(R0)
-get_all_positive_row <- function( mat ){
-  rows_selected <- sapply( 1:nrow(mat), function(x) all(sign(mat[x,])>0)  )
-  mat[rows_selected,]
-  
+  inc_model <- annual_incidence(FUN=cholera_sirw_cpp, params=params, tstop=tstop  )
+  # assume Poisson distribution 
+  neg_log_lik <- - sum( dpois( data, lambda=inc_rate_model, log=TRUE ) )
 }
-params <- get_all_positive_row( params_pool )
-# compute 
-rel_susc[,1:3] <- params[,2:4]
-R0 <- rep(NA,nrow(rel_susc))
-for( i in 1:nrow(rel_susc)){
-  R0[i] <- params_pool[i,1]/gamma*sum(rel_susc[i,]*age_dist)
-}
-params <- params[(R0>1&R0<10),]
-paramsR0 <- cbind( params, R0[(R0>1&R0<10)] )
-
-d <- matrix(NA, nrow=nrow(params), ncol=4)
-# hist(R0)
-inc_index <- 5
-for( i in 1:nrow(d) ){
-  cat( "i=", i, "\n" )
-  par <- as.double(params[i, ])
-  frac_report = 1
-  rel_susc <- rep(1,nag)
-  rel_susc[1:3] <- par[2:4]
-  tstop <- 600
-  nday <- 365
-  dt <- 365
-  times <- seq( 0, tstop*365, dt )
-  
-  t0 = Sys.time()
-  y = rk( y=init_val, times=times, func=cholera_sir_cpp, parms=par, method="rk45dp7", hmin=0.2, hmax=4 )
-  elapsed <- Sys.time() - t0
-  thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )
-  out <- y[ thin_row, ] # make sure that the output appears by year
-  S <- out[ , index_S ]
-  I <- out[ , index_I ]
-  R <- out[ , index_R ]
-  V <- out[ , index_V ]
-  CI <- out[ , index_CI ]
-  CV <- out[ , index_CV ]
-  N <- S + I + R + V
-  annual_CI <- CI[2:nrow(CI), ] - CI[1:(nrow(CI)-1),]
-  pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
-  annual_CI_pyo <- annual_CI / pyo
-  tail( annual_CI_pyo, 1 )  
-  d[i,1] <- tail( annual_CI_pyo, 1 )[inc_index]  
-  d[i,2] <- elapsed 
-  
-  t0 = Sys.time()
-  y3 = runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=par, hmin=0.2, hmax=5 )
-  elapsed <- Sys.time() - t0
-  out <- y3$y
-  
-  S <- out[ index_S-1 ]
-  I <- out[ index_I-1 ]
-  R <- out[ index_R-1 ]
-  V <- out[ index_V-1 ]
-  N <- S + I + R + V
-  foi <- par[1]*sum(I)/sum(N)
-  newI <- frac_report*foi*rel_susc*S;
-  annual_newI <- newI*365/N
-  d[i,3] <- annual_newI[inc_index]  
-  d[i,4] <- elapsed 
-}
-# dd <- data.frame(id=1:nrow(d), d=d)
-# df <- tbl_df(dd)
-# df_long <- gather( df[,c(2,4)], key, value, - id )
-# ggplot( df )+
-#   geom_line( aes(meth))
 ```
 
+# parameter estimation
+```{r}
+rm( list=ls() )
+
+source( "data/params.R" )
+
+
+t_stop <- 80
+
+
+start_pool <- seq( 1,50, length.out=5 )
+fit_list <- list()
+lower_bounds <- rep( 1E-24, 5 )
+upper_bounds <- c( 1000, 10, 1, 1000, 1000 )
+for( i in 5:5 ) {
+# start <- c( 1, 0.1, 0.1, 1, 1 )
+start <- c( beta=start_pool[i], chi_1=0.1, chi_2=0.5, chi_3=0.01, chi_4=0.1 )
+
+cat( "i=", i, "\n")
+fit <- optimx::optimx( par = start, 
+                  fn = neg_log_lik,
+                  lower = lower_bounds, 
+                  upper = upper_bounds,
+                  method = "nlminb",
+                  # itnmax = 100,
+                  control = list(trace=3),
+                  data = inc_rate_obs, 
+                  init_val = init_val )
+
+fit_list[[i]] <- fit
+}
+obj <- list( fit_results = fit_list, init_pop = y0, par_start = start_pool, t_stop = t_stop )
+obj_name <- paste0( "data/fit_tstop_", t_stop, ".rds" )
+saveRDS( obj, obj_name )
+```
 
 
 ```{r}
