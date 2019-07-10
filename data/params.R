@@ -2,6 +2,8 @@ num_age_grp <- 10L
 beta <- 0.2
 gamma <- 1/7
 ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 8) ) # <1, 1-4, 5-14, 15-24, ... 65-74, 75-84
+rate_excretion <- 1/7 #Rate of Vibrio cholerae from acutely or chronically infecteds
+rate_decay <- 1 #Rate of decay of infectious particles from water supply, average duration of viability, 3 weeks
 # Vaccination
 vacc_cov_campaign <- rep( 0, num_age_grp )
 vacc_cov_routine <- rep( 0, num_age_grp )
@@ -10,6 +12,7 @@ vacc_eff <- rep( 0, num_age_grp )
 vacc_rate_campaign <- - log(1-vacc_cov_campaign) / dur_campaign
 case_fatality <- rep( 0, num_age_grp )
 #
+
 rel_susc <- rep( 1, num_age_grp )
 susc_age_grp <- list( 1, 2, 3, 4:10 ) # age group 4:9 are assumed to have the same susceptibility
 

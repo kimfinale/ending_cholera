@@ -55,7 +55,6 @@ List cholera_sir_smpl_cpp( double t, NumericVector y, NumericVector params ){
        dRdt[i] = + ag[i-1]*R[i-1] + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + vacc_rate_campaign[i])*R[i];
        dVdt[i] = + ag[i-1]*V[i-1] + vacc_rate_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i];
      }
-     
    }
    
   //output

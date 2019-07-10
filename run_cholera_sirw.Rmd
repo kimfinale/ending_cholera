@@ -12,62 +12,37 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
-# Model checking--total population size (R version)
-```{r}
-library( tidyverse )
-library( deSolve )
-source( "util/params.R" )
-source( "models/cholera_sir.R" ) # cholera model
-tstop <- 55
-times <- seq( 0, tstop*365, 10 )
-params <- c( beta=0.4, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
-# Integrate ODEs
-out <- ode( y=init_val, times=times, func=cholera_sir_r, parms=params )
-
-S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
-I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
-R <- rowSums( out[ , (2+2*num_age_grp) : (3*num_age_grp+1) ] )
-V <- rowSums( out[ , (2+3*num_age_grp) : (4*num_age_grp+1) ] )
-N <- S + I + R + V
-df <- data.frame( t=(out[,1]/365),S=S, I=I, R=R, V=V, N=N )
-df_long <- tidyr::gather( df, inf_status, num, -t )
-# out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
-
-# d <- filter( df_long, inf_status == "I" )
-ggplot( df_long ) + 
-    geom_line( aes( x=t, y=num, color=inf_status ) ) 
-
-```
-
-# Rcpp Model check -- population size
+# Model checking -- population size
 ```{r}
 rm(list=ls())
 library( deSolve )
 library( tidyverse )
 source( "util/params.R" )
 library( Rcpp )
-sourceCpp( "models/cholera_sir_cpp.cpp" )
+sourceCpp( "models/cholera_sirw.cpp" )
 
 tstop <- 600
 nday <- 365
 dt <- 365
-times <- seq( 0, tstop*365, dt )
-params <- c( beta=0.45, chi_1=1, chi_2=1, chi_3=1, chi_4=1, frac_report=1 )
-# Integrate ODEs
-# out <- ode( y=init_val, times=times, func=cholera_sir_cpp, parms=params )
-out <- rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method="rk45dp7", hmax=4, hmin=0.2 )
+times <- seq( 0, tstop*nday, dt )
+params <- c( beta=0.5, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
+res <- rk( y=init_val, times=times, func=cholera_sirw, parms=params, method="rk45dp7", hmax=4, hmin=0.2 )
 if( dt != 365 ){
   thin_row <- seq( 1 , (tstop*nday/dt+1), by=nday/dt )
-  out <- out[ thin_row, ]
+  res <- res[ thin_row, ]
 }
-S <- rowSums( out[ , 2 : (num_age_grp+1) ] )
-I <- rowSums( out[ , (2+num_age_grp) : (2*num_age_grp+1) ] )
-R <- rowSums( out[ , (2+2*num_age_grp) : (3*num_age_grp+1) ] )
-V <- rowSums( out[ , (2+3*num_age_grp) : (4*num_age_grp+1) ] )
+res <- res[ , -1 ] # remove the time dimension
+S <- rowSums( res[ , 1 : (num_age_grp) ] )
+I <- rowSums( res[ , (1+num_age_grp) : (2*num_age_grp) ] )
+R <- rowSums( res[ , (1+2*num_age_grp) : (3*num_age_grp) ] )
+V <- rowSums( res[ , (1+3*num_age_grp) : (4*num_age_grp) ] )
+B <- res[ , 6*num_age_grp+1 ]
+
 N <- S + I + R + V
-df <- data.frame( t=(out[,1]/365),S=S, I=I, R=R, V=V, N=N )
+
+df <- data.frame( t=times,S=S, I=I, R=R, V=V, N=N, B=B )
 df_long <- tidyr::gather( df, inf_status, num, -t )
-# out$inf_status <- factor( out$inf_status, levels=c("S","I","R") )
+# res$inf_status <- factor( res$inf_status, levels=c("S","I","R") )
 
 # d <- filter( df_long, inf_status == "I" )
 ggplot( df_long ) +
@@ -77,13 +52,13 @@ ggplot( df_long ) +
 
 # Equilibrium distribution of age groups
 ```{r}
-N <- sapply( iag, function(x) rowSums( out[ , x+1 ] ) ) # +1 b/c the first column is time in the output
+N <- sapply( iag, function(x) rowSums( res[ , x ] ) ) 
 tail( N, 1 )
 
 library(rootSolve)
-ss <- runsteady(y=init_val, func=cholera_sir_cpp, parms=params )
-ss$y
-sapply( iag, function(x) sum( ss$y[ x ] ) )
+sstate <- runsteady(y=init_val, func=cholera_sirw, parms=params )
+sstate$y
+sapply( iag, function(x) sum( sstate$y[ x ] ) )
 ```
 
 # Equilibrium distribution
@@ -102,19 +77,19 @@ library( tidyverse )
 library( deSolve )
 source( "util/params.R" )
 library(Rcpp)
-sourceCpp( "models/cholera_sir_cpp.cpp" )
+sourceCpp( "models/cholera_sirw.cpp" )
 
 tstop <- 600
 times <- seq( 0, tstop*365, 365 )
 params <- c( beta=1.0, chi_1=1, chi_2=1, chi_3=1, chi_4=1 )
 # Integrate ODEs
-out <- rk( y=init_val, times=times, func=cholera_sir_cpp, parms=params, method="rk45dp7" )
-S <- out[ , 2 : (nag+1) ]
-I <- out[ , (2+nag) : (2*nag+1) ]
-R <- out[ , (2+2*nag) : (3*nag+1) ]
-V <- out[ , (2+3*nag) : (4*nag+1) ]
-CI <- out[ ,(2+4*nag) : (5*nag+1) ]
-CV <- out[ ,(2+5*nag) : (6*nag+1) ]
+res <- rk( y=init_val, times=times, func=cholera_sirw, parms=params, method="rk45dp7" )
+S <- res[ , 2 : (nag+1) ]
+I <- res[ , (2+nag) : (2*nag+1) ]
+R <- res[ , (2+2*nag) : (3*nag+1) ]
+V <- res[ , (2+3*nag) : (4*nag+1) ]
+CI <- res[ ,(2+4*nag) : (5*nag+1) ]
+CV <- res[ ,(2+5*nag) : (6*nag+1) ]
 N <- S + I + R + V
 annual_CI <- CI[2:nrow(CI),] - CI[1:(nrow(CI)-1),]
 pyo <- (N[1:tstop,] + N[2:(tstop+1),])/2 # beginning of the two consecutive years  
@@ -231,12 +206,12 @@ library( deSolve )
 source( "util/params.R" )
 source( "util/func.R" )
 library( Rcpp )
-sourceCpp( "models/cholera_sirw_cpp.cpp" )
+sourceCpp( "models/cholera_sirw.cpp" )
 
 start <- c( 3.8, 1, 0.5, 1 )
 
 library( adaptMCMC )
-m <- MCMC( p=log_posterior, n=1e5, init=start, scale=c(0.01,0.2,0.2,0.2), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw_cpp, data=inc_obs_Jakarta, tstop=100, pyo=1e5, maxsteps=500 )
+m <- MCMC( p=log_posterior, n=1e5, init=start, scale=c(0.01,0.2,0.2,0.2), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs_Jakarta, tstop=100, pyo=1e5, maxsteps=500 )
 # tic <- Sys.time()
 plot(m$samples[,1],type="l")
 # dd <- d$samples[1e5:2e5,]
