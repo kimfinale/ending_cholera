@@ -1,37 +1,38 @@
-# calculate the incidence rate per person at the final year
-annual_inc_tstop <- function( params, fun, tstop, dt=365, integ_method="rk45dp7", ... ){
-  if( !is.function(fun) )
-    stop("Argument fun is not a function!")
-  library(deSolve)
-  if( is.na(tstop) )
-    stop("Please provide the stop time!")
-  if( is.null(init_val) )
-    stop("Please provide the initial values!")
-  if( is.null(params) )
-    stop("Please provide the parameter values!")
-  nday <- 365
-  times <- seq( 0, tstop*nday, dt )
-  out <- rk( y=init_val, times=times, func=fun, parms=params, method=integ_method, ... )  # Integrate ODEs
-  thin <- seq( 1 , round(tstop*nday/dt)+1, by=round(nday/dt) )  # thin output by year
-  out <- out[ thin, ] # make sure that the output appears by year
-  S <- out[ , index_S ]
-  I <- out[ , index_I ]
-  R <- out[ , index_R ]
-  V <- out[ , index_V ]
-  CI <- out[ , index_CI ]
-  CV <- out[ , index_CV ]
-  N <- S + I + R + V
-  n <- nrow(out)
-  annual_CI <- CI[ 2:n, ] - CI[ 1:(n-1), ]
-  pyo <- ( N[ 1:(n-1), ] + N[ 2:n, ] )/2 # beginning of the two consecutive years  
-  annual_CI_pyo <- annual_CI / pyo
-  
-  list( annual_inc_pyo = tail( annual_CI_pyo, 1 ),
-        steady_pop = tail( N, 1 ) )
-}
+# # calculate the incidence rate per person at the final year
+# annual_inc_tstop <- function( params, fun, tstop, dt=365, integ_method="rk45dp7", ... ){
+#   if( !is.function(fun) )
+#     stop("Argument fun is not a function!")
+#   library(deSolve)
+#   if( is.na(tstop) )
+#     stop("Please provide the stop time!")
+#   if( is.null(init_val) )
+#     stop("Please provide the initial values!")
+#   if( is.null(params) )
+#     stop("Please provide the parameter values!")
+#   day_per_year <- 365
+#   times <- seq( 0, tstop*day_per_year, dt )
+#   out <- rk( y=init_val, times=times, func=fun, parms=params, method=integ_method, ... )  # Integrate ODEs
+#   thin <- seq( 1 , round(tstop*day_per_year/dt)+1, by=round(day_per_year/dt) )  # thin output by year
+#   out <- out[ thin, ] # make sure that the output appears by year
+#   out <- out[, -1 ] # remove the time column
+#   S <- out[ , index_s ]
+#   I <- out[ , index_i ]
+#   R <- out[ , index_r ]
+#   V <- out[ , index_v ]
+#   CI <- out[ , index_ci ]
+#   CV <- out[ , index_cv ]
+#   N <- S + I + R + V
+#   n <- nrow(out)
+#   annual_inc <- CI[ 2:n, ] - CI[ 1:(n-1), ]
+#   pyo <- ( N[ 1:(n-1), ] + N[ 2:n, ] )/2 # beginning of the two consecutive years  
+#   annual_inc_pyo <- annual_inc / pyo
+#   
+#   list( annual_inc_pyo = tail( annual_inc_pyo, 1 ),
+#         steady_pop = tail( N, 1 ) )
+# }
 
 # calculate the incidence rate per person at the final year
-incidence <- function( params, fun, tstart, tstop, dt=365, integ_method="rk45dp7", ... ){
+incidence <- function( params, fun, tstart=0, tstop, dt=365, integ_method="rk45dp7", ... ){
   if( !is.function(fun) )
     stop("Argument fun is not a function!")
   library(deSolve)
@@ -42,41 +43,67 @@ incidence <- function( params, fun, tstart, tstop, dt=365, integ_method="rk45dp7
   if( is.null(params) )
     stop("Please provide the parameter values!")
   
-  times <- seq( 0, tstop, dt )
+  day_per_year <- 365
+  times <- seq( 0, tstop*day_per_year, dt )
+  row_tstop <- round(tstop*day_per_year/dt)+1
+  row_tstart <- round(tstart*day_per_year/dt)+1
+  thin <- seq( 1 , row_tstop, by=round(day_per_year/dt) )
+  
   out <- rk( y=init_val, times=times, func=fun, parms=params, method=integ_method, ... )  # Integrate ODEs
   
-  row_tstop <- round(tstop/dt)+1
-  row_tstart <- round(tstart/dt)+1
-  thin <- seq( 1 , row_tstop, by=round(365/dt) )
   out <- out[ thin, ]
-  S <- out[ , index_S ]
-  I <- out[ , index_I ]
-  R <- out[ , index_R ]
-  V <- out[ , index_V ]
-  CI <- out[ , index_CI ]
-  CV <- out[ , index_CV ]
+  out <- out[ , -1 ]
+  S <- out[ , index_s ]
+  I <- out[ , index_i ]
+  R <- out[ , index_r ]
+  V <- out[ , index_v ]
+  CI <- out[ , index_ci ]
+  CV <- out[ , index_cv ]
+  
   N <- S + I + R + V
   
   row_year_start <- round(tstart/365) + 1
   row_year_stop <- round(tstop/365) + 1
   
-    list( params = params,
+  n <- nrow(out)
+  annual_inc <- CI[ 2:n, ] - CI[ 1:(n-1), ]
+  pyo <- ( N[ 1:(n-1), ] + N[ 2:n, ] )/2 # mean of the two consecutive years  
+  annual_inc_per_person <- annual_inc / pyo
+  
+  list( params = params,
         fun = fun,
         init = init_val,
         times= c(tstart, tstop),
         ci = CI[ row_year_start:row_year_stop, ],
-        pop = N[ row_year_start:row_year_stop, ] )
+        pop = N[ row_year_start:row_year_stop, ], 
+        annual_inc_per_person = annual_inc_per_person )
 }
 
+inc_model <- function( params, fun, tstop, pyo, ... ){
+
+  res <- incidence( params=params, fun=fun, tstop=tstop, ... )
+  ir <- tail( res$annual_inc_per_person, 1 )
+  pop <- tail( res$pop, 1 )
+  inc_pyo <- ir*pyo # incidence by age group over a perid of pyo
+  
+  inc_model <- rep( NA, 4 ) # inc_obs is a global variable
+  inc_model[1] <- inc_pyo[1]
+  inc_model[2] <- inc_pyo[2]
+  inc_model[3] <- inc_pyo[3]
+  inc_model[4] <- sum( inc_pyo[4:10] )
+  
+  return( inc_model )
+}
 
 annual_inc_steady <- function( params, ... ){
   library(rootSolve)
   y <- runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=params, hmin=1e-3, hmax=4 )
-  out <- y$y
-  S <- out[ index_S-1 ]
-  I <- out[ index_I-1 ]
-  R <- out[ index_R-1 ]
-  V <- out[ index_V-1 ]
+  out <- y$y[,-1] # remove time
+   
+  S <- out[ index_s ]
+  I <- out[ index_i ]
+  R <- out[ index_r ]
+  V <- out[ index_v ]
   N <- S + I + R + V
   foi <- params[1]*sum(I)/sum(N)
   rel_susc <- rep(1,nag)
@@ -86,11 +113,22 @@ annual_inc_steady <- function( params, ... ){
   return( annual_new_inf_pyo )
 }  
 
+
+compute_R0_water <- function( params ){
+  avg_death_rate <- sum(death_rate*age_dist)
+  rel_susc <- rep( 1, nag )
+  rel_susc[1:3] <- params[2:4]
+  R0 <- frac_symptom*(params[1]/(gamma+avg_death_rate))*(rate_excretion/rate_decay)*sum(rel_susc*age_dist)
+  
+  return( R0 )
+}
+
 compute_R0 <- function( params ){
   avg_death_rate <- sum(death_rate*age_dist)
   rel_susc <- rep( 1, nag )
   rel_susc[1:3] <- params[2:4]
   R0 <- (params[1]/(gamma+avg_death_rate))*sum(rel_susc*age_dist)
+  
   return( R0 )
 }
 
@@ -119,18 +157,18 @@ neg_log_lik <- function( params, data, fun, tstop, pyo ){
   }
 }
 
-inc_model <- function( params, fun, tstop, pyo, ... ){
-  # ir <- annual_inc_steady( params=params )
-  ir <- annual_inc_tstop( params=params, fun=fun, tstop=tstop, ... )
-  inc_pyo <- ir$annual_inc_pyo*ir$steady_pop/sum(ir$steady_pop)*pyo
-  inc_model <- rep( NA, 4 ) # inc_obs is a global variable
-  inc_model[1] <- inc_pyo[1]
-  inc_model[2] <- inc_pyo[2]
-  inc_model[3] <- inc_pyo[3]
-  inc_model[4] <- sum( inc_pyo[4:10] )
-  
-  return( inc_model )
-}
+# inc_model <- function( params, fun, tstop, pyo, ... ){
+#   # ir <- annual_inc_steady( params=params )
+#   ir <- annual_inc_tstop( params=params, fun=fun, tstop=tstop, ... )
+#   inc_pyo <- ir$annual_inc_pyo*ir$steady_pop/sum(ir$steady_pop)*pyo
+#   inc_model <- rep( NA, 4 ) # inc_obs is a global variable
+#   inc_model[1] <- inc_pyo[1]
+#   inc_model[2] <- inc_pyo[2]
+#   inc_model[3] <- inc_pyo[3]
+#   inc_model[4] <- sum( inc_pyo[4:10] )
+#   
+#   return( inc_model )
+# }
 
 
 log_lik <- function ( params, data, fun, tstop, pyo, ...  ) {
@@ -163,7 +201,7 @@ log_posterior <- function( params, data, fun, tstop, pyo, ... ){
   # R0 needs to be larger than 1, but not too large  (e.g., 20), in which case ode integrating routine may complain
   # Also, Ro won't be that high and in fact, it will be safe to assume that R0 will be lower than 10
   # parameters have to be positive
-  if( sum(params<0) > 0 | compute_R0(params) <= 1 | compute_R0(params) >= 20 ){
+  if( sum(params<0) > 0 | compute_R0_water(params) <= 1 | compute_R0_water(params) >= 30 ){
     return ( -Inf )
   } 
   

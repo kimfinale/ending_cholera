@@ -15,6 +15,7 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
   double gamma = Environment::global_env()["gamma"];
   int num_age_grp = Environment::global_env()["num_age_grp"];
   double frac_report = Environment::global_env()["frac_report"];
+  double frac_symptom = Environment::global_env()["frac_symptom"];
   double rate_excretion = Environment::global_env()["rate_excretion"];
   double rate_decay = Environment::global_env()["rate_decay"];
   //vaccination
@@ -36,11 +37,13 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
   }
   
   // Rprintf("the value of rate_excretion %f at time %f\n", rate_excretion, t );
+  
   NumericVector S = y[ Rcpp::Range( 0, (num_age_grp-1)) ];
   NumericVector I = y[ Rcpp::Range( num_age_grp, (2*num_age_grp-1)) ];
   NumericVector R = y[ Rcpp::Range( 2*num_age_grp, (3*num_age_grp-1)) ];
   NumericVector V = y[ Rcpp::Range( 3*num_age_grp, (4*num_age_grp-1)) ];
-  
+  NumericVector CV = y[ Rcpp::Range( 4*num_age_grp, (5*num_age_grp-1)) ];
+  NumericVector CI = y[ Rcpp::Range( 5*num_age_grp, (6*num_age_grp-1)) ];
   double B = y[ 6*num_age_grp ];
      
   NumericVector dSdt( num_age_grp );
@@ -49,18 +52,17 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
   NumericVector dVdt( num_age_grp );
   NumericVector dCVdt( num_age_grp );
   NumericVector dCIdt( num_age_grp );
+  double dBdt;
   
-  double dBdt = 0;
-    
+  // parameter to be estimated  
   double beta = params[ 0 ];
   rel_susc[ 0 ] = params[ 1 ];
   rel_susc[ 1 ] = params[ 2 ];
   rel_susc[ 2 ] = params[ 3 ];
 
   double births = birth_rate;
-  
   // Rprintf("the value of beta : %f \n", beta );
-  double I_tot = sum( I );
+  double I_symptom = frac_symptom * sum( I );
   double foi = beta * B; 
   for(int i = 0; i < num_age_grp; ++i){
      if( i == 0 ){
@@ -74,11 +76,10 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
        dRdt[i] = + ag[i-1]*R[i-1] + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + rate_vacc_campaign[i])*R[i];
        dVdt[i] = + ag[i-1]*V[i-1] + rate_vacc_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i];
      }
-     
-     dCIdt[i] = frac_report*foi*rel_susc[i]*S[i]; 
+     dCIdt[i] = frac_report*frac_symptom*foi*rel_susc[i]*S[i]; 
      dCVdt[i] = rate_vacc_campaign[i]*(S[i] + R[i]);
    }
-  dBdt = rate_excretion*I_tot - rate_decay*B;
+  dBdt = rate_excretion*I_symptom - rate_decay*B;
   
   //output
   NumericVector out( init_val.size() );
