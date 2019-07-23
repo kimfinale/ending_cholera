@@ -1,11 +1,22 @@
 # Demographics
-# death_rate <- read.csv("data/death_rate.csv")
+library(readr)
+dat <- read_csv("data/cholera_data.csv")
+
+names(dat) <- c( "country",	"WHO_stratum", "case_fatality_rate",
+                 "inc_total",	"inc_<1",	"inc_1-4","inc_5-14", "inc_15+", "crude_birth_rate_2005-2010", 
+                 "crude_birth_rate_2010-2015", "crude_birth_rate_2015-2020", "ref_year",
+                 "prop_<1",	"prop_1-4",	"prop_5-14",	"prop_15-24",	"prop_25-34",	"prop_35-44",	"prop_45-54",	"prop_55-64",	"prop_65-74", 
+                 "prop_75+",	"prop_tot" )
+dat <- dat[-1,] 
 # death_rate <- death_rate[["Indonesia"]]
 # birth_rate <- read.csv("data/birth_rate.csv")
 # birth_rate <- birth_rate[["Indonesia"]]
-birth_rate <- 21.8/1000/365 # per person per day 
-age_dist <- c( 0.02238036, 0.089521439, 0.2510, 0.1951, 0.1446, 0.1108, 0.0798, 0.0568, 0.0356, 0.0145 ) #Nepal
-ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 7), 0 ) # <1, 1-4, 5-14, 15-24, ... 65-74, 75+
+d <- dat[dat$country==country,]
+
+birth_rate <- (d$`crude_birth_rate_2005-2010` + d$`crude_birth_rate_2010-2015`)/2/1000/365# 21.8/1000/365 # per person per day 
+# age_dist <- c( 0.02238036, 0.089521439, 0.2510, 0.1951, 0.1446, 0.1108, 0.0798, 0.0568, 0.0356, 0.0145 ) #Nepal
+age_dist <- as.double(d[,13:22])
+ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 7), 0 ) # rate of aging <1, 1-4, 5-14, 15-24, ... 65-74, 75+
 death_rate <- rep( 0, length(ag)) # death_rate is adjusted according to  
 death_rate[1] <- (birth_rate - age_dist[1]*ag[1])/ age_dist[1]
 for( i in 2:10 ){
@@ -18,7 +29,7 @@ omega <- 1/(3*365) # 3 years for the duration of natural immunity Ali et al. (20
 rate_excretion <- 1;
 rate_decay <- 1/20;
 nag <- num_age_grp <- 10 # number of age groups
-case_fatality <- rep( 0.03, nag ) # SEAR-D Ale et al. (2015)
+case_fatality <- rep( 0.03, nag ) # SEAR-D Ali et al. (2015)
 rel_susc <- rep( 1, nag )
 frac_symptom <- 0.25 # one fourth of the cholera-infected people develop symptoms
 frac_report <- 0.2# one fifth of the people with symptoms are reported to health facilities

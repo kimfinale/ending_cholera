@@ -229,18 +229,19 @@ apply( dd, 2, mean )
 # library(readxl)
 # d <- read_xlsx( "data/cholera_data.xlsx" )
 rm( list=ls() )
+country <- "Nepal"
 library( deSolve )
 source( "codes/params.R" )
 source( "codes/func.R" )
 library( Rcpp )
 sourceCpp( "codes/cholera_sirw.cpp" )
 
-start <- c( 0.4, 1, 1, 1 )
+start <- c( 0.2, 1, 1, 1 )
 
 library( adaptMCMC )
 
 tic <- Sys.time()
-res <- MCMC( p=log_posterior, n=1e2, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=200, pyo=1e5 )
+res <- MCMC( p=log_posterior, n=1e5, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=150, pyo=1e5 )
 
 # res <- MCMC( p=log_posterior, n=5e4, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=200, pyo=1e5, maxsteps=500, hmin=0.1, hmax=4 )
 
@@ -249,7 +250,7 @@ Sys.time() - tic
 plot(res$samples[,1],type="l")
 
 tstamp <- format( Sys.time(), "%Y%m%dT%H%M%S" )
-saveRDS( res, paste0( "out/res_", tstamp, ".rds") )
+saveRDS( res, paste0( "out/", country, "_fit_", tstamp, ".rds") )
 
 
 # dd <- d$samples[1e5:2e5,]
