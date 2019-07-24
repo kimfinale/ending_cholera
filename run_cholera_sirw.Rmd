@@ -15,6 +15,7 @@ editor_options:
 # Model checking -- population size
 ```{r}
 rm(list=ls())
+country <- "Nepal"
 library( deSolve )
 library( tidyverse )
 source( "codes/func.R" )
@@ -27,7 +28,7 @@ nday <- 365
 dt <- 365
 times <- seq( 0, tstop*nday, dt )
 
-params <- c( 0.21, 1, 1, 1 )
+params <- c( 0.05, 1, 1, 1 )
 compute_R0_water( params )
 res <- rk( y=init_val, times=times, func=cholera_sirw, parms=params, method="rk45dp7", hmax=4, hmin=0.2 )
 if( dt != 365 ){
@@ -83,7 +84,7 @@ init_val <- c( init_val, rep(0,2*num_age_grp) )
 dput( init_val )
 
 library(rootSolve)
-ss <- runsteady(y=init_val, func=cholera_sir_cpp, parms=params )
+ss <- runsteady(y=init_val, func=cholera_sirw, parms=params )
 ```
 
 # Model check -- annual incidence by age group
@@ -226,8 +227,6 @@ apply( dd, 2, mean )
 
 # Fitting to incidence data
 ```{r}
-# library(readxl)
-# d <- read_xlsx( "data/cholera_data.xlsx" )
 rm( list=ls() )
 country <- "Nepal"
 library( deSolve )
@@ -241,7 +240,7 @@ start <- c( 0.2, 1, 1, 1 )
 library( adaptMCMC )
 
 tic <- Sys.time()
-res <- MCMC( p=log_posterior, n=1e5, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=150, pyo=1e5 )
+res <- MCMC( p=log_posterior, n=1e5, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=80, pyo=1e5 )
 
 # res <- MCMC( p=log_posterior, n=5e4, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=200, pyo=1e5, maxsteps=500, hmin=0.1, hmax=4 )
 
@@ -260,17 +259,17 @@ saveRDS( res, paste0( "out/", country, "_fit_", tstamp, ".rds") )
 # Vaccine impact evaluation
 ```{r}
 rm( list=ls() )
+country <- "Nepal"
 source( "codes/params.R" ) #
 source( "codes/func.R" )
 library( Rcpp )
 sourceCpp( "codes/cholera_sirw.cpp" )
 # params <- c(1.3,5,1.8,0.4)
 
-d <- readRDS( "out/res_20190719T132213.rds" )
-samples <- d$samples[sample(45000:50000,20),]
+d <- readRDS( "out/20190723T174144.rds" )
+samples <- d$samples[sample(80000:100000,20),]
 scenario <- expand.grid( init_vacc_efficacy = c( 0.95, 0.82 ),
                          waning_rate_vacc_immune = c( 1/(5*365), 1/(20*365) ),
-                         frac_report = c( 0.05, 0.1, 0.5 ),
                          vacc_campaign = TRUE )
 
 res_10y <- data.frame( matrix( NA, nrow=nrow(scenario), ncol=nrow(samples) ) )

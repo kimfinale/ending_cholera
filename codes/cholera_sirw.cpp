@@ -18,6 +18,9 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
   double frac_symptom = Environment::global_env()["frac_symptom"];
   double rate_excretion = Environment::global_env()["rate_excretion"];
   double rate_decay = Environment::global_env()["rate_decay"];
+  double rate_wane_nat = Environment::global_env()["rate_wane_nat"];
+  double rate_wane_vacc = Environment::global_env()["rate_wane_vacc"];
+  
   //vaccination
   NumericVector cov_vacc_campaign = Environment::global_env()["cov_vacc_campaign"];
   NumericVector cov_vacc_routine = Environment::global_env()["cov_vacc_routine"];
@@ -66,15 +69,15 @@ List cholera_sirw( double t, NumericVector y, NumericVector params ){
   double foi = beta * B; 
   for(int i = 0; i < num_age_grp; ++i){
      if( i == 0 ){
-       dSdt[i] = + births - (foi*rel_susc[i] + mu[i] + rate_vacc_campaign[i] + ag[i])*S[i];
+       dSdt[i] = + births - (foi*rel_susc[i] + mu[i] + rate_vacc_campaign[i] + ag[i])*S[i] + rate_wane_vacc*V[i] + rate_wane_nat*R[i] ;
        dIdt[i] = + foi*rel_susc[i]*S[i] - (mu[i] + ag[i] + gamma)*I[i];
-       dRdt[i] = + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + rate_vacc_campaign[i])*R[i];
-       dVdt[i] = + rate_vacc_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i];		
+       dRdt[i] = + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + rate_wane_nat + rate_vacc_campaign[i])*R[i];
+       dVdt[i] = + rate_vacc_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i] + rate_wane_vacc)*V[i];		
      } else {
-       dSdt[i] = + ag[i-1]*S[i-1] - (foi*rel_susc[i] + mu[i] + rate_vacc_campaign[i] + ag[i])*S[i];
+       dSdt[i] = + ag[i-1]*S[i-1] - (foi*rel_susc[i] + mu[i] + rate_vacc_campaign[i] + ag[i])*S[i] + rate_wane_vacc*V[i] + rate_wane_nat*R[i];
        dIdt[i] = + ag[i-1]*I[i-1] + foi*rel_susc[i]*S[i] - (mu[i] + ag[i] + gamma)*I[i];
-       dRdt[i] = + ag[i-1]*R[i-1] + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + rate_vacc_campaign[i])*R[i];
-       dVdt[i] = + ag[i-1]*V[i-1] + rate_vacc_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i])*V[i];
+       dRdt[i] = + ag[i-1]*R[i-1] + (1 - case_fatality[i])*gamma*I[i] - (mu[i] + ag[i] + rate_wane_nat + rate_vacc_campaign[i])*R[i];
+       dVdt[i] = + ag[i-1]*V[i-1] + rate_vacc_campaign[i]*(S[i] + R[i]) - (mu[i] + ag[i] + rate_wane_vacc)*V[i];
      }
      dCIdt[i] = frac_report*frac_symptom*foi*rel_susc[i]*S[i]; 
      dCVdt[i] = rate_vacc_campaign[i]*(S[i] + R[i]);
