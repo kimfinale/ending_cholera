@@ -43,7 +43,7 @@ incidence <- function( params, fun, tstop, ... ){
   if( is.null(params) )
     stop("Please provide the parameter values!")
   
-  times <- seq( 0, tstop*365, 365 ) # tstop in years and 365 days per year (model parameter units in day)
+  times <- seq( 0, tstop, 365 ) # outputs every 365 days 
   res <- rk( y=init_val, times=times, func=fun, parms=params, method="rk45dp7", hmin=0.1, hmax=4, maxsteps=500, ... )  # Integrate ODEs
   res <- res[ , -1 ]
   S <- res[ , index_s ]
