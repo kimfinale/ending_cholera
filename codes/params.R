@@ -1,26 +1,26 @@
 # Demographics
 library(readr)
-dat <- read_csv("data/cholera_data.csv")
-names(dat) <- c( "country",	"WHO_stratum", "case_fatality_rate",
+d <- read_csv("data/cholera_data.csv")
+names(d) <- c( "country",	"WHO_stratum", "case_fatality_rate",
                  "inc_total",	"inc_<1",	"inc_1-4","inc_5-14", "inc_15+", "crude_birth_rate_2005-2010", 
                  "crude_birth_rate_2010-2015", "crude_birth_rate_2015-2020", "ref_year",
                  "prop_<1",	"prop_1-4",	"prop_5-14",	"prop_15-24",	"prop_25-34",	"prop_35-44",	"prop_45-54",	"prop_55-64",	"prop_65-74", 
                  "prop_75+",	"prop_tot" )
 
-d <- dat[dat$country==country,]
+dat <- d[d$country==country,]
 
-# if( is.na(d$`inc_<1`) ){
-#   d$`inc_<1` <- d$`inc_1-4`  ## rewrite the code by using the total incidene 
+# if( is.na(dat$`inc_<1`) ){
+#   dat$`inc_<1` <- dat$`inc_1-4`  ## rewrite the code by using the total incidene 
 # }
-birth_rate <- (d$`crude_birth_rate_2005-2010` + d$`crude_birth_rate_2010-2015`)/2/1000/365# 21.8/1000/365 # per person per day 
-age_dist <- as.double(d[,13:22])
+birth_rate <- (dat$`crude_birth_rate_2005-2010` + dat$`crude_birth_rate_2010-2015`)/2/1000/365# 21.8/1000/365 # per person per day 
+age_dist <- as.double(dat[,13:22])
 ag <- c( 1/365, 1/(4*365), rep( 1/(10*365), 7), 0 ) # rate of aging <1, 1-4, 5-14, 15-24, ... 65-74, 75+
 death_rate <- rep( 0, length(ag)) # death_rate is adjusted according to the age distribution 
 death_rate[1] <- (birth_rate - age_dist[1]*ag[1])/ age_dist[1]
 for( i in 2:10 ){
   death_rate[i] <- (age_dist[i-1]*ag[i-1] - age_dist[i]*ag[i])/ age_dist[i]
 }
-inc_obs <- as.integer( c( d$`inc_<1`, d$`inc_1-4`, d$`inc_5-14`, d$`inc_15+` )*100 ) # incidence per 1e5 pyo
+inc_obs <- as.integer( c( dat$`inc_<1`, dat$`inc_1-4`, dat$`inc_5-14`, dat$`inc_15+` )*100 ) # incidence per 1e5 pyo
 
 # Transmission-related parameters
 beta <- 1.2  # transmission rate will be calibrated  
@@ -43,7 +43,8 @@ stop_vacc_campaign <- start_vacc_campaign + dur_vacc_campaign
 
 cov_vacc_campaign <- rep( 0, num_age_grp )
 cov_vacc_routine <- rep( 0, num_age_grp )
-
+rate_vacc_campaign_susc <- rep( 0, num_age_grp )
+rate_vacc_campaign_removed <- rep( 0, num_age_grp ) 
 eff_vacc <- rep( 0, nag )
 eff_vacc[1:2] <- 0.3 #Bi et al.(2017) Lancet Infect Dis
 eff_vacc[3:nag] <- 0.64 #Bi et al.(2017) Lancet Infect Dis

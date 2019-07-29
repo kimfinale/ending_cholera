@@ -307,13 +307,13 @@ sourceCpp( "codes/cholera_sirw.cpp" )
 
 fit <- readRDS( "out/Nepal_fit_20190726T070759.rds" )
 
-tsteady <- 10 
-cov_vacc_campaign <- c( 0, rep(0.9,nag-1) ) # <1 is not vaccinatied
+tsteady <- 80*365 
+cov_vacc_campaign <- c( 0, rep(0.99,nag-1) ) # <1 is not vaccinatied
 vacc_campaign <- TRUE
-dur_post_vacc <- 60
+dur_post_vacc <- 10*365
 tstop <- tsteady + dur_post_vacc  
 start_vacc_campaign <- tsteady
-dur_vacc_campaign <- 30
+dur_vacc_campaign <- 14
 stop_vacc_campaign <- start_vacc_campaign + dur_vacc_campaign
 
 set.seed(0)
