@@ -1,35 +1,3 @@
-# # calculate the incidence rate per person at the final year
-# annual_inc_tstop <- function( params, fun, tstop, dt=365, integ_method="rk45dp7", ... ){
-#   if( !is.function(fun) )
-#     stop("Argument fun is not a function!")
-#   library(deSolve)
-#   if( is.na(tstop) )
-#     stop("Please provide the stop time!")
-#   if( is.null(init_val) )
-#     stop("Please provide the initial values!")
-#   if( is.null(params) )
-#     stop("Please provide the parameter values!")
-#   day_per_year <- 365
-#   times <- seq( 0, tstop*day_per_year, dt )
-#   out <- rk( y=init_val, times=times, func=fun, parms=params, method=integ_method, ... )  # Integrate ODEs
-#   thin <- seq( 1 , round(tstop*day_per_year/dt)+1, by=round(day_per_year/dt) )  # thin output by year
-#   out <- out[ thin, ] # make sure that the output appears by year
-#   out <- out[, -1 ] # remove the time column
-#   S <- out[ , index_s ]
-#   I <- out[ , index_i ]
-#   R <- out[ , index_r ]
-#   V <- out[ , index_v ]
-#   CI <- out[ , index_ci ]
-#   CV <- out[ , index_cv ]
-#   N <- S + I + R + V
-#   n <- nrow(out)
-#   annual_inc <- CI[ 2:n, ] - CI[ 1:(n-1), ]
-#   pyo <- ( N[ 1:(n-1), ] + N[ 2:n, ] )/2 # beginning of the two consecutive years  
-#   annual_inc_pyo <- annual_inc / pyo
-#   
-#   list( annual_inc_pyo = tail( annual_inc_pyo, 1 ),
-#         steady_pop = tail( N, 1 ) )
-# }
 
 # calculate the incidence rate per person at the final year
 incidence <- function( params, fun, tstop, ... ){
@@ -51,42 +19,43 @@ incidence <- function( params, fun, tstop, ... ){
   R <- res[ , index_r ]
   V <- res[ , index_v ]
   CI <- res[ , index_ci ]
-  CV <- res[ , index_cv ]
+  Vacc <- res[ , index_cv ]
   N <- S + I + R + V
   
   n <- nrow(res)
   annual_inc <- CI[ 2:n, ] - CI[ 1:(n-1), ]
   pyo <- ( N[ 1:(n-1), ] + N[ 2:n, ] )/2 # mean of the two consecutive years  
-  annual_inc_per_person <- annual_inc / pyo
+  # annual_inc_per_person <- annual_inc / pyo
   
   list( params = params,
         fun = fun,
         init = init_val,
         ci = CI,
-        pop = N, 
-        annual_inc_per_person = annual_inc_per_person ) # annual_inc_per_person has a low
+        vacc = Vacc,
+        pop = N,
+        pyo = pyo ) # annual_inc_per_person has a low
 }
 
 inc_model <- function( params, fun, tstop, pyo, ... ){
-
+  
   res <- incidence( params=params, fun=fun, tstop=tstop, ... )
-  ir <- tail( res$annual_inc_per_person, 1 )
-  inc_pyo <- ir*pyo # incidence by age group over a perid of pyo
+  # ir_steady <- tail( res$annual_inc_per_person, 1 )
+  n <- nrow( res$ci )
+  unit_pyo <- tail( res$pyo, 1 )
+  inc_pyo <- rep( NA, 4 ) # inc_obs is a global variable
+  inc_pyo[1:3] <- (res$ci[n,1:3] - res$ci[(n-1),1:3]) / unit_pyo[1:3] * pyo # incidence by age group over a perid of pyo
+  inc_pyo[4] <- (sum(res$ci[n,4:10]) - sum(res$ci[(n-1),4:10]))/sum(unit_pyo[4:10])*pyo
   
-  inc_model <- rep( NA, 4 ) # inc_obs is a global variable
-  inc_model[1] <- inc_pyo[1]
-  inc_model[2] <- inc_pyo[2]
-  inc_model[3] <- inc_pyo[3]
-  inc_model[4] <- sum( inc_pyo[4:10] )
-  
-  return( inc_model )
+  return( inc_pyo )
 }
+
+
 
 annual_inc_steady <- function( params, ... ){
   library(rootSolve)
   y <- runsteady( y=init_val[1:(4*nag)], func=cholera_sir_smpl_cpp, parms=params, hmin=1e-3, hmax=4 )
   res <- y$y[,-1] # remove time
-   
+  
   S <- res[ index_s ]
   I <- res[ index_i ]
   R <- res[ index_r ]
@@ -119,18 +88,6 @@ compute_R0 <- function( params ){
   return( R0 )
 }
 
-# # neg_log_lik
-# # function to calculate sum of negative log likelihood
-# # input is set to have one compoent, par, to ease the use of optim function
-# neg_log_lik <- function( params=NULL, data=NULL, ... ){
-#   if( is.null(data) ) 
-#     data <- inc_rate_obs
-#   
-#   inc_model <- annual_incidence( params=params, ... )
-#   # assume Poisson distribution 
-#   (-1)*sum( dpois( data, lambda=inc_model*100000, log=TRUE ) )
-# }
-
 neg_log_lik <- function( params, data, fun, tstop, pyo ){
   if( sum(params<0) > 0 | compute_R0(params) <= 1 | compute_R0(params) >= 20 ){
     return ( Inf )
@@ -143,19 +100,6 @@ neg_log_lik <- function( params, data, fun, tstop, pyo ){
     return( (-1)*sum( dpois( data, inc, log=TRUE ) ) )
   }
 }
-
-# inc_model <- function( params, fun, tstop, pyo, ... ){
-#   # ir <- annual_inc_steady( params=params )
-#   ir <- annual_inc_tstop( params=params, fun=fun, tstop=tstop, ... )
-#   inc_pyo <- ir$annual_inc_pyo*ir$steady_pop/sum(ir$steady_pop)*pyo
-#   inc_model <- rep( NA, 4 ) # inc_obs is a global variable
-#   inc_model[1] <- inc_pyo[1]
-#   inc_model[2] <- inc_pyo[2]
-#   inc_model[3] <- inc_pyo[3]
-#   inc_model[4] <- sum( inc_pyo[4:10] )
-#   
-#   return( inc_model )
-# }
 
 
 log_lik <- function ( params, data, fun, tstop, pyo, ...  ) {
@@ -174,12 +118,12 @@ log_prior<- function( params ){
   chi_1_tr = params[2]
   chi_2_tr = params[3]
   chi_3_tr = params[4]
-
+  
   beta_prior = dunif( beta_tr, 1e-6, 1e2, log=T )
   chi_1_prior = dunif( chi_1_tr, 1e-6, 1e2, log=T )
   chi_2_prior = dunif( chi_2_tr, 1e-6, 1e2, log=T )
   chi_3_prior = dunif( chi_3_tr, 1e-6, 1e2, log=T )
-
+  
   return( beta_prior + chi_1_prior + chi_2_prior + chi_3_prior  )
   
 }
@@ -248,5 +192,6 @@ run_MCMC <- function( startvalue=c(0.2,1,1,1), iter=100, burnin = round(iter/2),
   list( theta = chain[ (burnin + 1):iter, (1:npar)],
         loglik_posterior = chain[ (burnin + 1):iter, (npar+1)], 
         acceptance_ratio = sum(accept[(burnin + 1):iter]) / (iter - burnin))
- 
+  
 }
+

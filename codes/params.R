@@ -51,7 +51,7 @@ eff_vacc[3:nag] <- 0.64 #Bi et al.(2017) Lancet Infect Dis
 rate_wane_vacc <- 1/(5*365)
 rate_wane_nat <- 1/(5*365)
 
-rate_vacc_campaign <- - log(1-cov_vacc_campaign*eff_vacc) / dur_vacc_campaign
+# rate_vacc_campaign <- eff_vacc *(- log(1-cov_vacc_campaign) / dur_vacc_campaign )
 
 init_val <- c( age_dist[1:10]/2, 
                age_dist[1:10]/4, 
