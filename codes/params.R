@@ -38,7 +38,7 @@ frac_report <- 0.2# one fifth of the people with symptoms are reported to health
 vacc_campaign <- FALSE
 vacc_routine <- FALSE
 start_vacc_campaign <- 61*365
-dur_vacc_campaign <- 14.0
+dur_vacc_campaign <- 30
 stop_vacc_campaign <- start_vacc_campaign + dur_vacc_campaign
 
 cov_vacc_campaign <- rep( 0, num_age_grp )
@@ -51,7 +51,7 @@ eff_vacc[3:nag] <- 0.64 #Bi et al.(2017) Lancet Infect Dis
 rate_wane_vacc <- 1/(5*365)
 rate_wane_nat <- 1/(5*365)
 
-# rate_vacc_campaign <- eff_vacc *(- log(1-cov_vacc_campaign) / dur_vacc_campaign )
+rate_vacc_campaign <- - log(1-cov_vacc_campaign) / dur_vacc_campaign
 
 init_val <- c( age_dist[1:10]/2, 
                age_dist[1:10]/4, 
