@@ -5,6 +5,59 @@ editor_options:
   chunk_output_type: console
 ---
 
+### Increasing population size with constant age distribution
+```{r}
+library( deSolve )
+y_init <- c( 0.4, 0.5 )
+rate_birth <- 20/1000/365
+age_dist <- c( 0.4, 0.6 )
+rate_age <- c( 1/365, 0 )
+rate_death <- rep( 0, length(rate_age)) # death_rate is adjusted according to the age distribution 
+rate_pop_growth <- 0.1/365
+rate_death[1] <- (rate_birth - (rate_pop_growth + rate_age[1])*age_dist[1])/ age_dist[1]
+rate_death[2] <- (age_dist[1]*rate_age[1] - (rate_pop_growth+rate_age[2])*age_dist[2] ) / age_dist[2]
+
+params <- age_dist
+increasing_pop <- function( t, y, parms ) {
+
+  pop <- y[1] + y[2]
+  dy1 <- rate_birth*pop - (rate_age[1]+rate_death[1])*y[1]
+  dy2 <- rate_age[1]*y[1] - rate_death[2]*y[2]
+  
+  list( c(dy1, dy2) )
+}
+tstop <- 365*20
+dt <- 0.1
+times <- seq( from = 0, to = tstop, by = dt)
+out <- rk ( times = times, y = y_init, func = increasing_pop, method="euler", parms=params)
+            
+pick <- seq( 1,  round(tstop/dt), round(365/dt))
+
+out2 <- out[ pick,]
+# head (out, n = 3)
+# class(out2) <- "matrix" # without this, dplyr functions get error
+library(tidyverse)
+out2 <- tbl_df( out2 )
+colnames( out2 ) <- c( "Year", "X1", "X2" )
+out2$Year <- round(out2$Year / 365)
+out2$pop_tot <- out2$X1 + out2$X2
+out2$prop_x1 <- out2$X1 / out2$pop_tot
+out2$rate_growth <- out2$X2
+out2$rate_growth[1] <- 0
+out2$rate_growth[2:nrow(out2)] <- (out2$pop_tot[2:nrow(out2)] - out2$pop_tot[1:(nrow(out2)-1)]) / out2$pop_tot[1:(nrow(out2)-1)]
+
+# write.csv( out, "sir_tr_05.csv", row.names = FALSE )
+out2long <- gather( out2, var, num, - Year )
+out2long$var <- factor( out2long$var )
+
+d <- out2long
+ggplot( d ) + 
+    geom_line( aes( x=Year, y=num, color=var ) ) +
+    labs( x="Time (year)", y="Population size", color="Status" ) + 
+    theme( legend.position=c(0.85,0.45) )
+
+
+```
 
 ### Two-patch SIRV model (Azman et al. (2015)
 ```{r}

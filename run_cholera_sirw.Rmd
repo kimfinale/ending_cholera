@@ -15,20 +15,31 @@ editor_options:
 # Model checking -- population size
 ```{r}
 rm(list=ls())
-country <- "Nepal"
+country <- "Burkina Faso" #"Nepal"
 library( deSolve )
 library( tidyverse )
 source( "codes/func.R" )
 source( "codes/params.R" )
 library( Rcpp )
 sourceCpp( "codes/cholera_sirw.cpp" )
+# For a growing population
+rate_pop_growth <- 0.02168/365 # estimates for Burkina Faso from fitting the population growth
+death_rate[1] <- (birth_rate - (ag[1]+rate_pop_growth)*age_dist[1])/ age_dist[1]
+for( i in 2:10 ){
+  death_rate[i] <- (age_dist[i-1]*ag[i-1] - (ag[i]+rate_pop_growth)*age_dist[i])/ age_dist[i]
+}
+# arbitrarily control initial distribution (eg, with no infecteds)
+init_val <- c( age_dist[1:10]/2, 
+               rep(0,10), 
+               age_dist[1:10]/2, 
+               rep(0, 30), 1e-3 )
 
 tstop <- 200
 nday <- 365
 dt <- 365
 times <- seq( 0, tstop*nday, dt )
 
-params <- c( 0.05, 1, 1, 1 )
+params <- c( 1e-10, 1, 1, 1 )
 compute_R0_water( params )
 res <- rk( y=init_val, times=times, func=cholera_sirw, parms=params, method="rk45dp7", hmax=4, hmin=0.2 )
 if( dt != 365 ){
@@ -58,7 +69,12 @@ ggplot( d ) +
 # Model checking -- population distribution by age group
 ```{r}
 ag <- lapply( 1:10, function(x) rowSums( res[ , iag[[x]] ] ) )
-df <- data.frame( t=0:tstop, ag_0_1=ag[[1]], ag_1_4=ag[[2]], ag_5_14=ag[[3]] )
+df <- data.frame( t=0:tstop, ag_0_1=ag[[1]], ag_1_4=ag[[2]], ag_5_14=ag[[3]],
+                  ag_15_24=ag[[4]], ag_25_34=ag[[5]], ag_35_44=ag[[6]],
+                  ag_45_54=ag[[7]], ag_55_64=ag[[8]], ag_65_74=ag[[9]],
+                  ag_75above=ag[[10]] )
+df$tot <- rowSums(df[,2:11])
+df[,2:11] <- df[,2:11]/df[,12]
 d <- tidyr::gather( df, age_grp, num, -t )
 # d <- filter( df_long, age_grp == "ag_0_1" )
 ggplot( d ) +
@@ -262,6 +278,18 @@ plot(res$samples[,1],type="l")
 tstamp <- format( Sys.time(), "%Y%m%dT%H%M%S" )
 saveRDS( res, paste0( "out/", country, "_fit_", tstamp, ".rds") )
 ```
+
+# Visual check for convergence
+```{r}
+files <- list.files( path="out/", pattern="*.rds$", full.names=TRUE )
+for( i in 1:length(files)){
+  files[i]
+  fit <- readRDS(files[i])
+  plot(fit$samples[,1], type='l')  
+}
+```
+
+
 # Posterior predictive check
 ```{r}
 rm( list=ls() )
@@ -484,7 +512,6 @@ combinedchains = mcmc.list(chain, chain2)
 plot(combinedchains)
 gelman.diag(combinedchains)
 gelman.plot(combinedchains)
-
 ```
 
 
@@ -548,3 +575,344 @@ ggplot( out ) +
 
 # ggsave( "sir_i_bir_seas_10-24yr.png" )
 ```
+
+# Exponetially increasing population size with constant age distribution
+```{r}
+library( deSolve )
+y_init <- c( 0.4, 0.6 )
+rate_birth <- 20/1000/365
+age_dist <- c( 0.4, 0.6 )
+rate_age <- c( 1/365, 0 )
+rate_death <- rep( 0, length(rate_age)) # death_rate is adjusted according to the age distribution 
+rate_pop_growth <- 0.1/365
+rate_pop_growth <- log(1.1)/365  # annual growth of 10%
+rate_pop_growth <- (0.02168)/365 # 1 + r
+rate_death[1] <- (rate_birth - (rate_pop_growth + rate_age[1])*age_dist[1])/ age_dist[1]
+rate_death[2] <- (age_dist[1]*rate_age[1] - (rate_pop_growth+rate_age[2])*age_dist[2] ) / age_dist[2]
+
+params <- age_dist
+increasing_pop <- function( t, y, parms ) {
+  pop <- y[1] + y[2]
+  dy1 <- rate_birth*pop - (rate_age[1]+rate_death[1])*y[1]
+  dy2 <- rate_age[1]*y[1] - rate_death[2]*y[2]
+  list( c(dy1, dy2) )
+}
+tstop <- 365*200
+dt <- 0.1
+times <- seq( from = 0, to = tstop, by = dt)
+out <- rk ( times = times, y = y_init, func = increasing_pop, method="euler", parms=params)
+            
+pick <- seq( 1,  round(tstop/dt), round(365/dt))
+
+out2 <- out[ pick,]
+# head (out, n = 3)
+# class(out2) <- "matrix" # without this, dplyr functions get error
+library(tidyverse)
+out2 <- tbl_df( out2 )
+colnames( out2 ) <- c( "Year", "X1", "X2" )
+out2$Year <- round(out2$Year / 365)
+out2$pop_tot <- out2$X1 + out2$X2
+out2$prop_x1 <- out2$X1 / out2$pop_tot
+out2$rate_growth <- out2$X2
+out2$rate_growth[1] <- 0
+out2$rate_growth[2:nrow(out2)] <- (out2$pop_tot[2:nrow(out2)] - out2$pop_tot[1:(nrow(out2)-1)]) / out2$pop_tot[1:(nrow(out2)-1)]
+
+# write.csv( out, "sir_tr_05.csv", row.names = FALSE )
+out2long <- gather( out2, var, num, - Year )
+out2long$var <- factor( out2long$var )
+
+d <- out2long
+ggplot( d ) + 
+    geom_line( aes( x=Year, y=num, color=var ) ) +
+    labs( x="Time (year)", y="Population size", color="Status" ) + 
+    theme( legend.position=c(0.85,0.45) )
+
+```
+
+### Logistic population size with constant age distribution
+```{r}
+library( deSolve )
+y_init <- c( 0.4, 0.6 )
+rate_birth <- 20/1000/365
+age_dist <- c( 0.4, 0.6 )
+rate_age <- c( 1/365, 0 )
+rate_death <- rep( 0, length(rate_age)) # death_rate is adjusted according to the age distribution 
+rate_pop_growth <- 0.1/365
+rate_pop_growth <- log(1.1)/365  # annual growth of 10%
+rate_death[1] <- (rate_birth - (rate_pop_growth + rate_age[1])*age_dist[1])/ age_dist[1]
+rate_death[2] <- (age_dist[1]*rate_age[1] - (rate_pop_growth+rate_age[2])*age_dist[2] ) / age_dist[2]
+
+params <- age_dist
+increasing_pop <- function( t, y, parms ) {
+
+  pop <- y[1] + y[2]
+  dy1 <- rate_birth*pop - (rate_age[1]+rate_death[1])*y[1]
+  dy2 <- rate_age[1]*y[1] - rate_death[2]*y[2]
+  
+  list( c(dy1, dy2) )
+}
+tstop <- 365*20
+dt <- 0.1
+times <- seq( from = 0, to = tstop, by = dt)
+out <- rk ( times = times, y = y_init, func = increasing_pop, method="euler", parms=params)
+            
+pick <- seq( 1,  round(tstop/dt), round(365/dt))
+
+out2 <- out[ pick,]
+# head (out, n = 3)
+# class(out2) <- "matrix" # without this, dplyr functions get error
+library(tidyverse)
+out2 <- tbl_df( out2 )
+colnames( out2 ) <- c( "Year", "X1", "X2" )
+out2$Year <- round(out2$Year / 365)
+out2$pop_tot <- out2$X1 + out2$X2
+out2$prop_x1 <- out2$X1 / out2$pop_tot
+out2$rate_growth <- out2$X2
+out2$rate_growth[1] <- 0
+out2$rate_growth[2:nrow(out2)] <- (out2$pop_tot[2:nrow(out2)] - out2$pop_tot[1:(nrow(out2)-1)]) / out2$pop_tot[1:(nrow(out2)-1)]
+
+# write.csv( out, "sir_tr_05.csv", row.names = FALSE )
+out2long <- gather( out2, var, num, - Year )
+out2long$var <- factor( out2long$var )
+
+d <- out2long
+ggplot( d ) + 
+    geom_line( aes( x=Year, y=num, color=var ) ) +
+    labs( x="Time (year)", y="Population size", color="Status" ) + 
+    theme( legend.position=c(0.85,0.45) )
+
+```
+
+### Logistic model fitting
+```{r}
+y <- c(20320197.05,
+20087693.71,
+19812972.15,
+19488020.07,
+19118910.86,
+18708929.7,
+18265896.54,
+17787311.33,
+17256740.57,
+16654641.36,
+15974350.56,
+15215011.91,
+14396852.82,
+13557307.38,
+12737113.65,
+11956713,
+11212979.1,
+10485608.92)
+
+y0 <- 20320197.05
+# fx <- a/(1+b*c^(-t))
+t <- 1:18
+ratio<- y/y0
+# wilson<-nls(mass~phi1/(1+exp(-(phi2+phi3*days.since.birth))),
+#  start=list(phi1=100,phi2=-1.096,phi3=.002),data=data,trace=TRUE)
+
+fit <- nls( ratio ~ c/(1+a*exp(b*t)), start=list(a=-1e-3, b=1e-3, c=0.5) )
+fit <- nls( ratio ~ exp(-r*t), start=list(r=1e-8) )
+fit <- nls( ratio ~ log(r*t), start=list(r=1e-8) )
+fit2 <- nls( y ~ 3620912.954*exp(r*t), start=list(r=1e-4) )
+
+r <- 0.02669 
+pred <- exp(-r*t)
+
+plot( t, y/y0)
+lines( t, pred, col=2)
+
+y0 <- 3620912.954 #04.402e+06 
+r <- 0.09083 #7.775e-02
+pred <- y0*exp(r*t)
+
+plot( t, y)
+lines( t, pred, col=2)
+
+rownum <- which(apply(as.data.frame(dat[,1]), 1, function(x) any(grepl(paste("^",name,"$",sep=""), x)))) 
+  print(paste(i, rownum, name))
+  # find a row that matches the name, #paste("^",pat,"$", sep="") is used to find the exact match
+#   country.names <- dat[,1]
+#   sanitation <- dat[,-1] 
+#   sanitation.t <- t(sanitation) # transponse the data frame such that 
+  x <- 1990:2015 # year
+  y <- as.numeric(dat[rownum, 2:(length(x)+1)])/100
+  # y <- sanitation.t[,rownum]/100 # proportion of poulation with access to improved water source for the country. Note that the row now becomes a column   
+  #dat<-data.frame(x=x,y=y)  
+  pars[i,1] <- rownum
+  
+  fit.nls <- nls( y ~ 1-exp(-k*(x-tau)), start=list(tau=1960, k=0.01) )
+#   plot(x,y)
+  
+y <- c(23941.11,	24347.106,	24725.627,	25080.872,	25419.344, 25744.5, 26066.693,	26382.581,	26666.576,	26883.535,	27013.212,	27041.22,	26989.163,	26916.793,	26905.978,	27015.031,	27263.433,	27632.681,	28095.714,	28608.71,	29136.808)
+y0
+t <- 1:21
+fit <- nls( y ~ y0*exp(r*t), start=list(y0=23941.11,r=1e-4) )
+fit2 <- nls( y ~ y[1]*exp(r*t), start=list(r=1e-4) ) 
+y0 <- 2.438e+04 #04.402e+06 
+r <- 7.706e-03 #7.775e-02
+pred <- y0*exp(r*t)
+
+plot( t, y)
+lines( t, pred, col=2)
+
+```
+
+### Logistic growth model
+```{r}
+logistic_eqn <-  function( N, r, K) {
+  # calculate dN/dt for the logistic equation
+  
+  # r: growth rate (divisions per hour) 
+  # K: carrying capacity
+  # N: population size
+  return(r * N * (1 - N / K))
+}
+
+# parameters
+K <- 2
+r <- -0.8  
+
+dt <- 0.05 # timestep - the smaller, the better
+tmax <- 8 # the total time we want to numerically solve for
+points <- tmax/dt # the number of data points in the simulation - add 1 so that we can start at t=0
+
+# vectors to store values of N and t at each timestep:
+N_vector <- numeric(points) # population size
+t_vector <- seq(0, tmax - dt, by = dt) # time vector
+
+# initial condition
+N0 <- 1
+N_vector[1] <- N0
+
+N <- N0 # initialize variable N
+
+for (i in 2:points) {
+  # start at 2 because the initial state is at position 1
+  dN <- logistic_eqn(N = N, r = r, K = K) * dt
+  N <- N + dN # the variable N is changing at each step of the loop
+  N_vector[i] <- N
+}
+
+qplot(t_vector, N_vector,
+      ylab = "Population size N",
+      xlab = "Time t") 
+
+```
+
+
+#Exponential modeling fitting for the growth in pupulation at risk of cholera
+```{r}
+library(readxl)
+library(tidyverse)
+d <- read_xlsx( "data/WaSH Coverage 2000-2017_jhk_mm.xlsx")
+d <- d[-(1:2),]
+countries <- unique(d$SANITATION)
+
+for( i in 1:47 ){ 
+d1 <- dplyr::filter( d, SANITATION == countries[i] ) 
+  plot( d1$Year, d1$`Population at risk`, main=countries[i] )  
+}
+
+c1 <- "Burkina Faso" # country chosed after reviewing roughly the trend of population growth
+d1 <- dplyr::filter( d, SANITATION == c1 ) 
+# t <- d1$Year
+t <- 1:18
+y <- d1$`Population at risk`
+# func <- function (y0,tau,x){ y0*exp(r*(x-tau))}
+ctrl_base <- nls.control(maxiter=50, tol=1e-05, minFactor=1/1024, printEval=FALSE, warnOnly=FALSE)
+fit <- nls(y ~ y[1]*exp(r*t), start=list(r=1e-6), control=ctrl_base)  
+pred <- predict( fit, data.frame( t=1:30 ) ) 
+plot( 1:30, pred, type='l')
+points( t, y, col=2)
+```
+
+# Fitting to incidence data
+```{r}
+rm( list=ls() )
+country <- "Burkina Faso"
+library( deSolve )
+source( "codes/params.R" )
+source( "codes/func.R" )
+## reset death rates such that population size increases
+death_rate <- rep( 0, length(ag) ) # death_rate is adjusted according to the age distribution 
+rate_pop_growth <- 0.02168/365 # estimates from fitting the population growth
+death_rate[1] <- (birth_rate - (ag[1]+rate_pop_growth)*age_dist[1])/ age_dist[1]
+for( i in 2:10 ){
+  death_rate[i] <- (age_dist[i-1]*ag[i-1] - (ag[i]+rate_pop_growth)*age_dist[i])/ age_dist[i]
+}
+library( Rcpp )
+sourceCpp( "codes/cholera_sirw.cpp" )
+
+start <- c( 0.2, 1, 1, 1 )
+
+library( adaptMCMC )
+
+tic <- Sys.time()
+res <- MCMC( p=log_posterior, n=5e4, init=start, scale=c(0.01,0.1,0.1,0.1), adapt=TRUE, acc.rate=0.234, fun=cholera_sirw, data=inc_obs, tstop=80*365, pyo=1e5 )
+
+Sys.time() - tic
+
+plot(res$samples[,1],type="l")
+
+tstamp <- format( Sys.time(), "%Y%m%dT%H%M%S" )
+saveRDS( res, paste0( "out/", country, "_fit_", tstamp, ".rds") )
+```
+
+
+
+```{r}
+
+```
+
+
+
+
+
+
+```{r}
+# fit <- nls(y ~ y[1]*exp(r*(t-tau)), start=list(tau=2000, r=0.005), control=ctrl_base)
+rm(list=ls())
+setwd("C:/Users/jonghoon.kim/Documents/Workspace/R/mdg_improvedSanitation")
+# water <- read.csv("mdg_improvedWater.csv", header=FALSE)# data on the proportion of population from 1991-2012 ()
+water <- read.csv("mdg_improvedSanitation.csv", header=FALSE)# data on the proportion of population from 1991-2012 ()
+water_ <- water[,-1]
+water.t <- t(water_) # transponse the data 
+
+func <- function (x,tau,k){ 1-exp(-k*(x-tau))} # the function used to fit to the data
+
+tau <- c(1.941e+03,1.959e+03,1.965e+03,1.935e+03,1.976e+03,1.965e+03,1.979e+03,1.963e+03,1.981e+03,1.961e+03,1.957e+03,1.942e+03,1933.4034)            
+k <- c(1.063e-02,2.667e-02,2.802e-02,9.124e-03,5.223e-02,2.843e-02,3.682e-02,2.669e-02,3.332e-02,1.432e-02,1.856e-02,1.904e-02,0.0115) 
+column <- c(6,22,35,40,77,84,85,112,121,145,146,174,198) 
+countries  <- c("Angola","Benin","Cameroon","Chad","Ghana","Guinea","Guinea-Bissau","Liberia","Mali","Niger","Nigeria","Senegal","Togo")
+
+for( i in 1:length(countries) ){
+  country <- countries[6] # a (part) of the name of the country searched
+  country <- "Mali"
+  row <- which(apply(as.data.frame(water[,1]), 1, function(x) any(grepl(country, x, fixed=T)))) # find a row that contains a name
+  country.names <- water[,1]
+  
+  x <- 1990:2012 # year
+  tau_k <- data.frame( matrix( ncol=2, nrow=0 )) # data frame to store tau and k from the saturating exponential function
+  for( i in 1:length(column)){
+    row <- column[i]
+#     row <- 34
+    y <- water.t[,row]/100 # proportion of poulation with access to improved water source for the country. Note that the row now becomes a column   
+    plot(x,y)
+    fit.nls <- nls(y ~ 1-exp(-k*(x-tau)), start=list(tau=1900, k=0.005), control=ctrl.base)
+    tau_k <- rbind(tau_k, coef( fit.nls ))
+  }
+  
+  ctrl.base <- nls.control(maxiter=50, tol=1e-05, minFactor=1/1024, printEval=FALSE, warnOnly=FALSE)
+  #init <- coef(nls(y ~ 1-exp(-k*(x-tau)), data=dat, start=list(tau=1920,k=0.01),control=ctrl.base))
+  conf <- predictNLS(fit.nls, newdata=data.frame(x=2010:2050)) # confidence interval at value x
+  write( conf[,1],file=paste(country,".csv",sep=""), ncolumns=length(conf[,1]), sep=",")
+}
+## Sao Tome and Principe 
+saoTome = c(NA,NA,NA,NA,73.9,74,74.2,74.4,74.5,76.4,78.2,80,81.8,83.5,85.3,87,88.7,90.4,92.1,93.7,95.3,97,97,97,97.1,97.1)
+y=saoTome
+x=1990:2015
+
+
+```
+

@@ -43,8 +43,9 @@ stop_vacc_campaign <- start_vacc_campaign + dur_vacc_campaign
 
 cov_vacc_campaign <- rep( 0, num_age_grp )
 cov_vacc_routine <- rep( 0, num_age_grp )
-rate_vacc_campaign_susc <- rep( 0, num_age_grp )
-rate_vacc_campaign_removed <- rep( 0, num_age_grp ) 
+rate_vacc_campaign <- rep( 0, num_age_grp )
+# rate_vacc_campaign_susc <- rep( 0, num_age_grp )
+# rate_vacc_campaign_removed <- rep( 0, num_age_grp ) 
 eff_vacc <- rep( 0, nag )
 eff_vacc[1:2] <- 0.3 #Bi et al.(2017) Lancet Infect Dis
 eff_vacc[3:nag] <- 0.64 #Bi et al.(2017) Lancet Infect Dis

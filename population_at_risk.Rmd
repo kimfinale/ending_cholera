@@ -1,0 +1,713 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+###
+```{r}
+library(readxl)
+library(tidyverse)
+d <- read_xlsx( "data/WaSH Coverage 2000-2017_jhk_mm.xlsx")
+d <- d[-(1:2),]
+countries <- unique(d$SANITATION)
+
+for( i in 1:47 ){ 
+d1 <- dplyr::filter( d, SANITATION == countries[i] ) 
+plot(d1$Year, d1$`Population at risk`, main=countries[i])  
+}
+
+ggplot( d1, aes(Year, `Population at risk`) )
+plot(d1$Year, d1$`Population at risk`)  
+
+
+```
+
+
+### Fit a saturating exponential model using the data 2000-2017
+```{r}
+## (mdg_improvedSanitation.csv")
+rm(list=ls())
+setwd("C:/Users/jonghoon.kim/Documents/Workspace/R/mdg_improvedSanitation")
+# water <- read.csv("mdg_improvedWater.csv", header=FALSE)# data on the proportion of population from 1991-2012 ()
+water <- read.csv("mdg_improvedSanitation.csv", header=FALSE)# data on the proportion of population from 1991-2012 ()
+water_ <- water[,-1]
+water.t <- t(water_) # transponse the data 
+
+func <- function (x,tau,k){ 1-exp(-k*(x-tau))} # the function used to fit to the data
+
+tau <- c(1.941e+03,1.959e+03,1.965e+03,1.935e+03,1.976e+03,1.965e+03,1.979e+03,1.963e+03,1.981e+03,1.961e+03,1.957e+03,1.942e+03,1933.4034)            
+k <- c(1.063e-02,2.667e-02,2.802e-02,9.124e-03,5.223e-02,2.843e-02,3.682e-02,2.669e-02,3.332e-02,1.432e-02,1.856e-02,1.904e-02,0.0115) 
+column <- c(6,22,35,40,77,84,85,112,121,145,146,174,198) 
+countries  <- c("Angola","Benin","Cameroon","Chad","Ghana","Guinea","Guinea-Bissau","Liberia","Mali","Niger","Nigeria","Senegal","Togo")
+
+for( i in 1:length(countries) ){
+  country <- countries[6] # a (part) of the name of the country searched
+  country <- "Mali"
+  row <- which(apply(as.data.frame(water[,1]), 1, function(x) any(grepl(country, x, fixed=T)))) # find a row that contains a name
+  country.names <- water[,1]
+  
+  x <- 1990:2012 # year
+  tau_k <- data.frame( matrix( ncol=2, nrow=0 )) # data frame to store tau and k from the saturating exponential function
+  for( i in 1:length(column)){
+    row <- column[i]
+#     row <- 34
+    y <- water.t[,row]/100 # proportion of poulation with access to improved water source for the country. Note that the row now becomes a column   
+    plot(x,y)
+    fit.nls <- nls(y ~ 1-exp(-k*(x-tau)), start=list(tau=1900, k=0.005), control=ctrl.base)
+    tau_k <- rbind(tau_k, coef( fit.nls ))
+  }
+  
+  ctrl.base <- nls.control(maxiter=50, tol=1e-05, minFactor=1/1024, printEval=FALSE, warnOnly=FALSE)
+  #init <- coef(nls(y ~ 1-exp(-k*(x-tau)), data=dat, start=list(tau=1920,k=0.01),control=ctrl.base))
+  conf <- predictNLS(fit.nls, newdata=data.frame(x=2010:2050)) # confidence interval at value x
+  write( conf[,1],file=paste(country,".csv",sep=""), ncolumns=length(conf[,1]), sep=",")
+}
+## Sao Tome and Principe 
+saoTome = c(NA,NA,NA,NA,73.9,74,74.2,74.4,74.5,76.4,78.2,80,81.8,83.5,85.3,87,88.7,90.4,92.1,93.7,95.3,97,97,97,97.1,97.1)
+y=saoTome
+x=1990:2015
+
+#############################################################################################################
+## Model fitting using the proportion of poulation using improved sanitation instead of improved water source
+############################################################################################
+## AMR-D region
+countries <- c("Haiti")
+column <- c( 87 ) 
+tau <- c( 1926.086 )            
+k <- c( 0.003230703 ) 
+figName <- "amrD_sanitation.png"
+figText <- "AMR-D"
+############################################################################################
+## AMR-B region
+countries <- c("Dominican Republic", "Mexico")
+column <- c( 58, 128 ) 
+tau <- c( 1920.678, 1960.717 )            
+k <- c( 0.01877602, 0.03617092 ) 
+figName <- "amrB_sanitation.png"
+figText <- "AMR-B"
+############################################################################################
+## WPR-D region
+countries <- c("Cambodia")
+column <- c(34) 
+tau <- c( 1.99035e+03 )            
+k <- c( 1.97789e-02) 
+figName <- "wprD_sanitation.png"
+figText <- "WPR-D"
+############################################################################################
+## WPR-B region
+countries <- c( "China", "Philippines", "Viet Nam", "Malaysia", "Papua New Guinea" )
+column <- c( 43, 157, 218, 119, 154 ) 
+tau <- c( 1.983427e+03, 1.95619e+03, 1.978851e+03, 1.966401e+03, 9999 )            
+k <- c( 3.712091e-02, 2.45993e-02, 3.863585e-02, 7.666327e-02, 9999 )
+figName <- "wprB_sanitation.png"
+figText <- "WPR-B"
+############################################################################################
+## SEAR-D region
+countries <- c("Bangladesh","India","Myanmar","Nepal")
+column <- c( 17, 91, 136, 139 ) 
+tau <- c( 1969.764, 1973.875, 1971.334, 1986.724 )            
+k <- c( 0.01971697, 0.01142304, 0.03389740, 0.01764729 )                   
+figName <- "searD_sanitation.png"
+figText <- "SEAR-D"
+############################################################################################
+## SEAR-B region
+countries <- c("Thailand")
+column <- c( 195 ) 
+tau <- c( 1.962e+03 )            
+k <- c( 6.113e-02 ) 
+figName <- "searB_sanitation.png"
+figText <- "SEAR-B"
+###########################################################################################
+## EMR-D region
+column <- c( 94, 151, 182, 220, 1 ) 
+tau <- c( 1.948e+03, 1.970e+03, 1.847e+03, 1.979e+03, 1.950e+03 )            
+k <- c( 2.777e-02, 1.577e-02, 1.622e-03, 2.439e-02, 5.361e-03 ) 
+figName <- "emrD_sanitation.png"
+countries  <- c("Iraq", "Pakistan","Somalia","Yemen","Afghanistan")
+figText <- "EMR-D"
+############################################################################################
+## EMR-B region
+tau <- c(1.964e+03  )            
+k <- c(4.455e-02) 
+column <- c(93) 
+countries  <- c("Iran")
+figName <- "emrB_sanitation.png"
+figText <- "EMR-B"
+############################################################################################
+## AFR-E region
+tau <- c( 1.873e+03, 1.895e+03, 1.949e+03, 1.972e+03, 1.991e+03, 1.896e+03, 9999, 1.978e+03, 1.940e+03, 1.978e+03, 1.954e+03, 1.931e+03, 1.966e+03, 1.608e+03, 9999 )
+k <- c( 4.602e-03, 1.324e-03, 3.867e-03, 9.314e-03, 1.187e-02, 3.008e-03, 9999, 7.009e-03, 5.364e-03, 2.959e-02, 2.306e-02, 5.102e-03, 2.761e-03, 1.360e-03, 9999 )
+column <- c(33, 46, 49, 54, 65, 102, 118, 135, 137, 166, 183, 207, 211, 221, 222) 
+countries <- c("Burundi","Congo","Cote d'Ivoire","DR Congo","Ethiopia","Kenya","Malawi","Mozambique","Namibia","Rwanda","South Africa","Uganda","Tanzania","Zambia","Zimbabwe")
+figName <- "afrE_sanitation.png"
+figText <- "AFR-E"
+
+############################################################################################
+## For the proportion of population using improved sanitation
+## AFR-D region
+## values that were not estimated through proper fitting, 9999 are inserted 
+tau <- c(1.978e+03,1.980e+03,1.868e+03,1.951e+03,1.971e+03,1.975e+03, 1.979e+03, 1.947e+03, 1.946e+03,1.966e+03,9999,1958.4555,9999)            
+k <- c(2.576e-02,4.782e-03,4.150e-03,2.095e-03,3.717e-03,5.492e-03,6.387e-03,2.785e-03, 3.731e-03,2.047e-03,9999,0.0135,9999) 
+column <- c(6,22,35,40,77,84,85, 112,121,145,146,174,198) 
+countries <- c("Angola","Benin","Cameroon","Chad","Ghana","Guinea","Guinea-Bissau","Liberia","Mali","Niger","Nigeria","Senegal","Togo")
+# for Togo, fitting is not done, 0.11, the value during the most recent three years (2009-2012), is assumed instead for the remaining 35 yrs (2015-2050)
+figName <- "afrD_sanitation.png"
+figText <- "AFR-D"
+
+############################################################################################
+## To draw figures, import the data file "mdg_cleanwater.csv" and transpose. 
+pars <- data.frame(tau=tau, k=k)
+x <- 1990:2012 # year
+xx <- 1990:2050
+fitted <- data.frame(matrix(ncol=length(xx), nrow=0))
+func <- function (x,tau,k){ 1-exp(-k*(x-tau))} # the function used to fit to the data
+library("RColorBrewer")
+mypalette<-c(brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+
+png( figName, width=3.4, height=2.7, units="in", res=1200, pointsize=12 )
+par.old <- par(no.readonly=T)  
+par( mfrow=c(1,1), cex=0.6, mar=c(3.5,4.5,1,1.2), oma=c(0,0,0,0), xaxs='i', yaxs='i' )
+par( mgp=c(2.3, 1, 0), las=1 )
+
+plot( x, 100*water.t[,column[1]]/100, col=mypalette[1], xlim=c(1990,2050), ylim=c(0,105), 
+      xlab="Year", ylab="% population using improved sanitation", axes=FALSE )
+xticks <- seq(1990,2050,10)
+yticks <- seq(0,100,20)
+axis( side=1, at=xticks )
+axis( side=2, at=yticks )
+
+lines( xx, 100*func(xx,pars[1,1],pars[1,2]), col=mypalette[1] )
+fitted <-rbind( fitted, func(xx,pars[1,1],pars[1,2]) )
+
+for( i in 2:length(column) ){
+  points( x, 100*water.t[,column[i]]/100, col=mypalette[i] )
+  countries[i]
+  lines( xx, 100*func(xx,pars[i,1],pars[i,2]), col=mypalette[i] )
+  fitted <- rbind( fitted, func(xx,pars[i,1],pars[i,2]) )
+}
+
+
+
+
+
+
+
+
+
+
+####################################################################################################
+## plot the number of at-risk people and cases of cholera
+rm(list=ls())
+setwd("C:/Users/jonghoon.kim/Documents/Workspace/R/mdg_improvedSanitation/dat")
+dat <- read.csv("baseline_sim.csv", header=FALSE)# data on cholera burden 2010-2050
+# library("RColorBrewer")
+# mypalette<-c(brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+png( "baseline_sim.png", width=3.4, height=2.7, units="in", res=1200, pointsize=12 )
+par.old <- par(no.readonly=T)  
+par( mfrow=c(1,1), cex=0.6, mar=c(4,4,1,4), oma=c(0,2,0,2), xaxs='i', yaxs='i' )
+par( mgp=c(2.3, 1, 0), las=1 )
+x <- dat[,1] # year
+r <- 10
+library(sfsmisc)
+#Complete the x axis
+plot( x, 1000*dat[,2+5*r], type='o', lty=1, pch=0, cex=0.7, xlim=c(2015,2050), ylim=c(1.8e9,2.3e9), 
+      xlab="Year", ylab="", axes=FALSE )
+xticks <- seq( 2015, 2050, 5 )
+yticks <- seq( 1.8e9, 2.3e9, 0.1e9 )
+ytickslabels <- pretty10exp(yticks, drop.1=FALSE) # nice for plotting
+axis( side=1, at=xticks )
+axis( side=2, at=yticks, labels=ytickslabels )
+par(new=TRUE)
+plot( x, 1000*dat[,5+5*r], type="o", lty=1, pch=1, cex=0.7, xlim=c(2015,2050), ylim=c(3.0e6,7.0e6), 
+      xlab="", ylab="", axes=FALSE )
+yticks2 <- seq( 3e6, 7e6, 1e6 )
+ytickslabels2 <- pretty10exp(yticks2, drop.1=FALSE) # nice for plotting
+axis( side=4, at=yticks2, labels=ytickslabels2 )
+# mtext( "Year", side=1, outer=T, line=0, cex=0.7 )
+mtext( "Expected size of at-risk population", side=2, adj=0.7, outer=T, las=3, line=0.5, cex=0.7 )
+mtext( "Expected annual number of cholera cases", side=4, adj=0.7, outer=T, las=3, line=0.4, cex=0.7 ) 
+text( 2035, 5600000, "At-risk population", srt=25 )
+text( 2030, 4250000, "Cholera cases (right axis)", srt=25 )
+text( 2017, 6900000, "A", cex=1.2 ) 
+dev.off()
+par(par.old)
+
+##############################################################################################
+## plot the annual number of cholera cases under baseline and vaccination 
+rm( list=ls() )
+setwd("C:/Users/jonghoon.kim/Documents/Workspace/R/mdg_improvedSanitation/dat")
+dat <- read.csv("afr_d_vacc.csv", header=FALSE)# data on cholera burden 2010-2050
+# library("RColorBrewer")
+# mypalette<-c(brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+
+png( "VaccAFRD.png", width=3.4, height=2.7, units="in", res=1200, pointsize=12 )
+par.old <- par(no.readonly=T)  
+par( mfrow=c(1,1), cex=0.6, mar=c(4,4,1,1), oma=c(0,2,0,0), xaxs='i', yaxs='i' )
+par( mgp=c(2.3, 1, 0), las=1 )
+x <- 2015:2049 # year
+library(sfsmisc)
+#Complete the x axis
+plot( x, 1000*dat[,1], type='o', lty=1, pch=0, xlim=c(2015,2050), ylim=c(0,1.2e6), 
+      xlab="Year", ylab="", axes=FALSE )
+xticks <- seq(2015,2050,5)
+# yticks <- seq( 0, 1.1e6, 1e5 )
+yticks <- (seq(0,1.1,0.2))*10^6
+yticksexp <- pretty10exp(yticks, drop.1=FALSE) # nice for plotting
+axis( side=1, at=xticks )
+axis( side=2, at=yticks, labels=yticksexp )
+
+for( i in 1:3 ){
+  par(new=TRUE)
+  plot( x, 1000*dat[,i+1], type='o', lty=1, pch=i,, xlim=c(2015,2050), ylim=c(0,1.2e6), 
+        xlab="", ylab="", axes=FALSE )
+}
+mtext( "Expected annual number of cholera cases", side=2, line=0.4, outer=T, adj=0.7, cex=0.7, las=3 )
+
+strategies <- c("no vaccine", "1-14yo every 3 yrs", "1-14yo every 5 yrs", ">1yo every 5 yrs")
+legend( 2020, 1100000, legend=strategies, pch=c(0:3), lty=c(1), cex=0.8, ncol=1)
+
+text( 2017, 1075000, "B", cex=1.2 ) 
+
+dev.off()
+par( par.old )
+
+##############################################################################################
+## plot impact of vaccination under alternative assumptions 
+rm( list=ls() )
+setwd("C:/Users/jonghoon.kim/Documents/Workspace/R/mdg_improvedSanitation/dat")
+dat <- read.csv("vacc_impact.csv", header=FALSE)# data on cholera burden 2010-2050
+library("RColorBrewer")
+mypalette<-c(brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+
+png( "vacc_impact.png", width=3.4, height=2.7, units="in", res=1200, pointsize=12 )
+par.old <- par(no.readonly=T)  
+par( mfrow=c(1,1), cex=0.6, mar=c(4.0,4.0,1,1), oma=c(0,2,0,0), xaxs='i', yaxs='i' )
+par( mgp=c(2.3, 1, 0), las=1 )
+
+#Complete the x axis
+plot( 1+0.2*1, dat[1,1], type='p', pch=1, xlim=c(-2,6), ylim=c(0,100), cex=1.2, 
+      xlab="Vaccination strategy", ylab="", axes=FALSE )
+xticks <- seq(0,6,1)
+yticks <- seq(0,100,10)
+axis( side=1, at=xticks )
+axis( side=2, at=yticks )
+
+for( i in 1:10 ){
+  for( j in 1:5 ){
+    par(new=TRUE)
+    plot( 1+0.2*j, dat[i,j], type="p", pch=i, xlim=c(-2,6), ylim=c(0,100), cex=1.2,
+          xlab="", ylab="", axes=FALSE )
+  }
+}
+legend( -1.9, 100, legend=c("AFR-D","AFR-E","EMR-B","EMR-D","SEAR-B","SEAR-D","WPR-B","WPR-D","AMR-B","AMR-D"), 
+        pch=seq(1,10), pt.cex=1.2, ncol=1)
+dev.off()
+par( par.old )
+
+
+
+
+
+
+library("RColorBrewer")
+mypalette<-c(brewer.pal(9,"Set1"),brewer.pal(8,"Set2"))
+
+png( "afr_d_vacc.png", width=3.4, height=2.7, units="in", res=1200, pointsize=12 )
+par.old <- par(no.readonly=T)  
+par( mfrow=c(1,1), cex=0.6, mar=c(4.0,4.0,1,1), oma=c(0,2,0,0), xaxs='i', yaxs='i' )
+par( mgp=c(2.3, 1, 0), las=1 )
+x <- 2015:2049 # year
+library(sfsmisc)
+#Complete the x axis
+plot( x, 1000*dat[,1], type='l', col=mypalette[1], xlim=c(2015,2050), ylim=c(0,1.1e6), 
+      xlab="Year", ylab="", axes=FALSE )
+xticks <- seq(2015,2050,5)
+# yticks <- seq( 0, 1.1e6, 1e5 )
+yticks <- (seq(0,1.1,0.1))*10^6
+yticksexp <- pretty10exp(yticks, drop.1=FALSE) # nice for plotting
+axis( side=1, at=xticks )
+axis( side=2, at=yticks, labels=yticksexp )
+
+for( i in 1:3 ){
+  par(new=TRUE)
+  plot( x, 1000*dat[,i+1], type="l", col=mypalette[i+1], xlim=c(2015,2050), ylim=c(0,1.1e6), 
+        xlab="", ylab="", axes=FALSE )
+}
+mtext( "Expected annual number of cholera cases", side=2, line=0.4, outer=T, adj=0.7, cex=0.7, las=3 )
+
+strategies <- c("no vaccine", "1-14yo every 3 yrs", "1-14yo every 5 yrs", ">1yo every 5 yrs")
+legend( 2020, 1100000, legend=strategies, pch=c(1), col=mypalette, cex=0.8, ncol=1)
+
+text( 2017, 1075000, "B", cex=1.2 ) 
+
+dev.off()
+par( par.old )
+
+
+
+
+##################################################################################
+# # for AFR-E using improved sanitation 
+# for(i in 2:length(column)){
+#   points( x, 100*water.t[,column[i]]/100, col=mypalette[i] )
+#   countries[i]
+#   if( i == 7 ) {
+#     lines( xx, rep(10,length(xx)), col=mypalette[i] )
+#     fitted <-rbind( fitted, rep(0.1,length(xx)) )
+#   } else if( i == 15 ) {
+#     lines( xx, rep(40,length(xx)), col=mypalette[i] )
+#     fitted <-rbind( fitted, rep(0.4,length(xx)) )
+#   } else {
+#     lines( xx, 100*func(xx,pars[i,1],pars[i,2]), col=mypalette[i] )
+#     fitted <- rbind( fitted, func(xx,pars[i,1],pars[i,2]) )
+#   }
+# }
+
+# # for AFR-D using improved sanitation 
+# for(i in 2:length(column)){
+#   points( x, 100*water.t[,column[i]]/100, col=mypalette[i] )
+#   if( i == 11 ) {
+#       lines( xx, rep(28,length(xx)), col=mypalette[i] )
+#       fitted <-rbind( fitted, rep(0.28,length(xx)) )
+#   } else if( i == 13 ) {
+#     lines( xx, rep(11,length(xx)), col=mypalette[i] )
+#     fitted <- rbind( fitted, rep(0.11,length(xx)) )
+#   } else {
+#     lines( xx, 100*func(xx,pars[i,1],pars[i,2]), col=mypalette[i] )
+#     fitted <- rbind( fitted, func(xx,pars[i,1],pars[i,2]) )
+#   }
+#   countries[i]
+# }
+##################################################################################
+write.table( fitted, file=paste("propSanitation_",figText,".csv"), sep=",")
+
+text( 1995,98, figText )
+legend(2010,20, legend=countries, pch=c(1), col=mypalette, cex=0.8, ncol=2)
+dev.off()
+par(par.old)
+
+
+#################################################################################
+##
+pop <- read.csv("PopWaterDiscounted.csv", header=FALSE)#
+plot( pop[,1], ylim=c(0,20000) )
+for( i in 1:14 ){
+  lines( pop[,i+1],lty=i )
+}
+yy <- rowSums( pop )
+xx <- 2010:2050
+datxx <- data.frame( xx=xx, yy=yy )
+plot( xx,yy ) 
+
+lines( xx, yy[2]*exp(r*(xx-2010)), col=2, lwd=2 )
+
+init <- coef(nls(yy~a*exp(k*(xx-2010)),data=datxx,start=list(a=166304,k=0.005),control=ctrl.base))
+
+fit.nls <- nls(yy~a*exp(k*(xx-2010)),data=datxx,start=list(a=init[1],k=init[2]),control=ctrl.base)
+
+lines( xx, 1.680e+05*exp(5.745e-03*(xx-2010)), col=2, lwd=2 )
+fityy <- 1.680e+05*exp(5.745e-03*(xx-2010))
+fitdat <- data.frame( xx, fityy )
+
+
+
+#################################################################################
+#################################################################################
+## AFR-D region
+tau <- c(1.941e+03,1.959e+03,1.965e+03,1.935e+03,1.976e+03,1.965e+03,1.979e+03,1.963e+03,1.981e+03,1.961e+03,1.957e+03,1.942e+03,1933.4034)            
+k <- c(1.063e-02,2.667e-02,2.802e-02,9.124e-03,5.223e-02,2.843e-02,3.682e-02,2.669e-02,3.332e-02,1.432e-02,1.856e-02,1.904e-02,0.0115) 
+column <- c(6,22,35,40,77,84,85,112,121,145,146,174,198) 
+countries <- c("Angola","Benin","Cameroon","Chad","Ghana","Guinea","Guinea-Bissau","Liberia","Mali","Niger","Nigeria","Senegal","Togo")
+figName <- "afrD_water.png"
+################################################################################
+## AFR-E region
+tau <- c(1879,1930,1825,1799,1986,1959,1981,1957,1971,1927,1960,1976,1986,1946.279,1458)
+k <- c(0.0105,0.01695,0.008591,0.002903,0.02657,0.01812,0.05309,0.01226,0.05577,0.01459,0.05283,0.03537,0.02657,0.0147,0.002933)
+column <- c(33,46,49,54,65,102,118,135,137,166,183,207,211,221,222) 
+countries <- c("Burundi","Congo","Cote d'Ivoire","DR Congo","Ethiopia","Kenya","Malawi","Mozambique","Namibia","Rwanda","South Africa","Uganda","Tanzania","Zambia","Zimbabwe")
+figName <- "afrE_water.png"
+#################################################################################
+## EMR-B region
+tau <- c(1.918e+03)            
+k <- c(3.432e-02) 
+column <- c(93) 
+countries  <- c("Iran")
+figName <- "emrB_water.png"
+############################################################################################
+## EMR-D region
+column <- c(94,151,182,220,1) 
+tau <- c(1.909e+03,1.911e+03,1.971e+03,1.891e+03,1.992e+03)            
+k <- c(1.804e-02,2.417e-02,9.667e-03,6.622e-03,4.192e-02) 
+figName <- "emrD_water.png"
+countries  <- c("Iraq", "Pakistan","Somalia","Yemen","Afghanistan")
+############################################################################################
+## SEAR-B region
+countries <- c("Thailand")
+column <- c(195) 
+tau <- c(1.958e+03)            
+k <- c(6.029e-02) 
+figName <- "searB_water.png"
+############################################################################################
+## SEAR-D region
+countries <- c("Bangladesh","India","Myanmar","Nepal")
+column <- c(17,91,136,139) 
+tau <- c(1.956e+03,1.970e+03,1.974e+03,1.966e+03)            
+k <- c(3.268e-02,5.624e-02,4.565e-02,4.357e-02) 
+figName <- "searD_water.png"
+############################################################################################
+## WPR-B region
+countries <- c("China", "Philippines", "Viet Nam", "Malaysia", "Papua New Guinea")
+column <- c(43,157,218,119,154) 
+tau <- c(1.973e+03,1.936e+03,1.977e+03,1975.7932,1.909e+03)            
+k <- c(6.208e-02,3.322e-02,6.948e-02,0.1421,4.822e-03)
+figName <- "wprB_water.png"
+figText <- "WPR-B"
+############################################################################################
+## WPR-D region
+countries <- c("Cambodia")
+column <- c(34) 
+tau <- c(1.985e+03)            
+k <- c(3.889e-02) 
+figName <- "wprD_water.png"
+figText <- "WPR-D"
+############################################################################################
+## AMR-B region
+countries <- c("Dominican Republic", "Mexico")
+column <- c(58,128) 
+tau <- c(1.985e+03,1.956e+03)            
+k <- c(3.889e-02, 5.053e-02) 
+figName <- "amrB_water.png"
+figText <- "AMR-B"
+############################################################################################
+## AMR-D region
+countries <- c("Haiti")
+column <- c(87) 
+tau <- c(1.091e+03)            
+k <- c(1.051e-03) 
+figName <- "amrD_water.png"
+figText <- "AMR-D"
+
+
+###########################################################################################
+
+## Population at risk of cholera (thousands)
+## AFR-D region 
+popAfrD <- c(111554.7242,109352.6353,110327.523,111317.3357,112318.9016,113328.612,114343.5684,115361.7698,116382.3885,117405.1155,118430.1358,119457.6295,120486.7562,121516.7971,122548.2994,123581.9784,124618.0927,125655.8516,126694.1843,127732.4159,128769.8426,129805.5095,130838.0693,131865.9726,132887.657,133901.3907,134905.4307,135898.1028,136877.6018,137841.7211,138788.2421,139715.0203,140620.6488,141503.5491,142361.5818,143192.4669,143994.5015,144766.3351,145507.3425,146217.1433,146895.6668)
+popEmrB <- c(3127.625682,3022.105137,2957.86893,2895.974346,2835.720312,2776.237219,2716.969118,2657.801061,2598.857753,2540.079937,2481.482594,2423.084383,2364.889501,2306.941439,2249.38361,2192.347037,2135.974535,2080.298087,2025.367162,1971.273126,1918.1339,1866.00913,1814.921221,1764.887515,1715.912594,1668.018538,1621.189313,1575.43152,1530.730565,1487.067761,1444.397655,1402.704096,1361.968777,1322.161252,1283.269407,1245.25861,1208.105791,1171.795985,1136.311708,1101.625572,1067.71798)
+# population size without accounting for improved water source
+# This was done because popualtion size decreases over time and thus dynamic model model suggest a decreasing population size
+popEmrBTotal <- c(74462.314,74462.314,75424.285,76424.443,77447.168,78470.222,79476.308,80460.185,81422.696,82359.958,83269.272,84148.607,84995.202,85807.753,86588.021,87339.284,88064.356,88763.551,89437.163,90088.162,90720.22,91336.27,91937.572,92524.562,93098.257,93659.446,94208.636,94746.271,95272.303,95785.98,96286.116,96771.583,97241.809,97696.163,98133.29,98551.601,98949.636,99326.63,99681.712,100013.216,100319.263)
+popEmrD <- c(264908.679,264908.679,270320.957,275810.22,281362.464,286956.364,292575.327,298211.51,303865.676,309539.489,315237.599,320960.731,326707.159,332466.092,338218.202,343938.872,349609.12,355218.722,360766.96,366256.16,371692.984,377081.309,382418.394,387697.531,392914.116,398062.693,403138.377,408138.141,413059.35,417897.98,422649.859,427311.374,431879.69,436352.763,440728.889,445006.815,449185.334,453262.506,457236.787,461107.936,464876.214)
+popSearBTotal <- c(66402.316, 66402.316,66576.332,66785.001,67010.502,67222.972,67400.746,67540.824,67651.959,67737.8,67804.876,67857.997,67897.365,67921.043,67929.311,67922.252,67899.866,67862.376,67809.757,67741.394,67656.412,67554.088,67434.265,67296.86,67141.331,66967.057,66773.603,66560.888,66329.031,66078.106,65808.28,65519.821,65213.031,64888.366,64546.499,64188.24,63814.423,63425.684,63022.769,62606.771,62178.924)
+popSearDTotal <- c(1435527.37,1435527.37,1453525.88,1471653.796,1489791.033,1507754.117,1525406.443,1542707.06,1559687.693,1576369.508,1592796.791,1608996.553,1624963.469,1640663.286,1656060.385,1671108.791,1685772.208,1700034.329,1713892.093,1727339.068,1740373.268,1752992.508,1765189.545,1776957.984,1788298.662,1799214.957,1809709.363,1819782.12,1829431.697,1838657.232,1847457.638,1855833.095,1863785.017,1871316.963,1878434.206,1885143.394,1891450.741,1897360.124,1902875.428,1908003.075,1912750.135)
+popWprBTotal <- c(1577447.964,  1577447.964,	1589179.638,	1600974.377,	1612678.071,	1624092.295,	1635058.94,	1645516.168,	1655447.811,	1664800.279,	1673530.369,	1681608.638,	1688999.392,	1695698.17,	1701751.477,	1707232.355,	1712199.415,	1716665.674,	1720630.259,	1724122.878,	1727175.82,	1729814.865,	1732057.806,	1733911.772,	1735377.419,	1736449.217,	1737123.581,	1737406.951,	1737306.13,	1736817.468,	1735934.688,	1734654.212,	1732981.711,	1730923.546,	1728478.378,	1725643.786,	1722422.062,	1718820.684,	1714854.855,	1710545.316,	1705917.618)
+popWprDTotal <- c(14364.931,14364.931,14605.862,14864.646,15135.169,15408.27,15677.059,	15939.563,	16197.118,	16450.063,	16699.697,	16946.829,	17191.223,	17431.754,	17667.421,	17896.997,	18119.707,	18335.112,	18543.699,	18746.795,	18946.284,	19143.612,	19339.143,	19532.715,	19724.605,	19914.984,	20103.928,	20291.56,	20477.795,	20662.188,	20844.104,	21022.984,	21198.653,	21370.921,	21539.187,	21702.744,	21861.046,	22013.801,	22160.947,	22302.471,	22438.469)
+popAmrBTotal <- c(127903.201,  127903.201,	129508.831,	131124.098,	132736.16,	134328.169,	135887.722,	137408.415,	138891.959,	140344.083,	141774.507,	143189.823,	144590.546,	145972.211,	147330.521,	148659.431,	149954.195,	151213.045,	152435.95,	153621.965,	154770.569,	155881.189,	156952.852,	157984.532,	158975.628,	159925.678,	160834.281,	161701.019,	162525.556,	163307.745,	164047.548,	164744.968,	165400.092,	166012.983,	166583.665,	167112.178,	167598.726,	168043.433,	168446.856,	168810.176,	169134.896)
+popAmrDTotal <- c(9896.4,  9896.4,	10032.864,	10173.775,	10317.461,	10461.409, 10603.731,	10743.909,	10882.315,	11019.003,	11154.27,	11288.313,	11420.972,	11551.972,	11681.283,	11808.903,	11934.817,	12058.96,	12181.257,	12301.682,	12420.211,	12536.811,	12651.431,	12763.999,	12874.435,	12982.649,	13088.554,	13192.088,	13293.187,	13391.76,	13487.708,	13580.944,	13671.449,	13759.182,	13844.022,	13925.822,	14004.498,	14079.973,	14152.31,	14221.742,	14288.593)
+popAfrDTotal <- c(310931.659,  310931.659,	319806.92,	328904.1,	338221.011,	347756.644,	357510.476,	367481.542,	377669.702,	388076.826,	398705.822,	409559.717,	420639.423,	431947.153,	443488.999,	455272.506,	467303.651,	479584.335,	492115.136,	504898.811,	517937.983,	531233.981,	544786.186,	558592.585,	572650.814,	586957.59,	601508.788,	616300.352,	631326.684,	646579.681,	662049.818,	677727.753,	693607.154,	709680.673,	725936.589,	742361.738,	758944.734,	775676.512,	792551.194,	809564.523,	826713.863)
+popAfrETotal <- c(431220.208,431220.208,442353.218,453779.828,465466.95,477370.345,489456.103,501711.34,514137.668,526733.772,539503.363,552449.355,565566.86,578852.323,592312.547,605957.598,619794.672,633824.209,648043.233,662451.186,677046.688,691827.648,706791.339,721934.336,737252.451,752740.736,768393.492,784205.715,800170.478,816277.409,832514.452,848870.605,865336.783,881905.884,898571.082,915326.242,932164.25,949078.028,966057.767,983090.339,1000160.889)
+
+
+func <- function (t,y0,r){y0*exp(r*(t-2010))} # the function used to fit to the data
+t <- 2010:2050 # year
+y <- popAfrETotal # proportion of poulation with access to improved water source for the country. Note that the row now becomes a column   
+dat <- data.frame(t=t,y=y)
+
+ctrl.base <- nls.control(maxiter=50, tol=1e-05, minFactor=1/1024, printEval=FALSE, warnOnly=FALSE)
+fit <- nls(y ~ y0*exp(r*(t-2010)), start=list(y0=66402.316, r=0.01), control=ctrl.base)
+fit
+y0 <- 4.382e+05  
+r <- 2.112e-02  
+plot(t,y)
+lines(t,y0*exp(r*(t-2010)))
+
+
+
+func <- function (t,y0,r){y0*exp(r*(t-2010))}
+pars <- data.frame(y0=1.100e+05,r=7.596e-03)
+lines( t, pars[1]*exp(pars[2]*(t-2010)), col=mypalette[1] )
+
+##############################################################################################
+# Fit results
+# c(afrD,emrB,emrD,wprB)
+y0 <- c(168000,110000,2.745e+05,6.845e+04,1.631e+06)
+r <- c(0.005745,0.007596,1.402e-02,-1.493e-03,1.933e-03)
+
+
+
+
+#######################################################################################
+#######################################################################################
+## compute the death rate for those > 5
+#AFR-E
+e <- 53.5012666666667
+u1<-109.715466666667/1000 # <5 mortality
+
+# AFR-D
+e <- 54.6392307692308
+u1<-135.155384615385/1000 # <5 mortality 
+# EMR-B
+e <- 72.258
+u1<- 28.305/1000 # <5 mortality 
+# EMR-D
+e <- 61.5566
+u1<- 91.0286/1000 # <5 mortality 
+# SEAR-B
+e <- 73.303
+u1<- 13.703/1000 # <5 mortality 
+# SEAR-D
+e <- 65.86
+u1<- 62/1000 # <5 mortality 
+# WPR-B
+e <- 70.5802
+u1<- 29.1812/1000 # <5 mortality 
+# WPR-D
+e <- 69.507
+u1<- 64.018/1000 # <5 mortality 
+# AMR-B
+e <- 74.214
+u1<- 26.598/1000 # <5 mortality 
+# AMR-D
+e <- 60.674
+u1<- 80.588/1000 # <5 mortality
+
+# Uganda over the period of 2010-2050
+e <- 71.079 #60.762 #59.024
+u1<- 29.991/1000 #74.076/1000 #86.094/1000 # <5 mortality 
+
+a1 <- 1 # aging rate for the first age group, i.e., <1 yo
+a2 <- 1/4 # 1-4 yo
+a3 <- 1/10 # 5-14 yo
+a4 <- 0 # >14 yo
+
+a <- (e - ((a1+a2+u1)/((a1+u1)*(a2+u1))))/(a1*a2/((a1+u1)*(a2+u1)))
+b <- a*(a3+a4) - 1
+c <- a3*a4 - a3 - a4
+u2 <- (-b+sqrt(b^2 - 4*a*c))/(2*a) #annual death rate for >= 5 yo 
+u2
+
+u <- c(0,0,0,0)
+a <- c(1,1/4,1/10,0)
+# e <- c(59.0220,61.5800,59.4900,51.0340) # life expectancy at age 0, 1, 5, and 15 resp. in Uganda during 2010-2015
+# e <- c( 52.288, 55.586, 54.419, 46.743)# life expectancy at age 0, 1, 5, and 15 resp. in Nigeria during 2010-2015
+e <- c( 59.022,	61.58, 59.49, 51.034 )# life expectancy at age 0, 1, 5, and 15 resp. in Uganda during 2010-2015
+
+
+u[4] <- 1/e[4]
+u[3] <- (1+a[3]*e[4]-a[3]*e[3])/e[3]
+u[2] <- (1+a[2]*e[3]-a[2]*e[2])/e[2]
+u[1] <- (1+a[1]*e[2]-a[1]*e[1])/e[1]
+
+## using a linear fit
+year <- c(2012,2017,2022,2027,2032,2037,2042,2047)
+mort_infant <- c(57.0360,50.1870,44.6860,39.1600,34.1760,29.7510,25.9610,23.4230)/1000 
+mort_underfive <- c(86.0940,74.0760,64.3020,54.6910,46.5750,39.4520,33.4720,29.9910)/1000
+lifeExpectancy <- c(59.0240,60.7620,62.5480,64.4630,66.3210,68.0830,69.7110,71.0790) 
+birthRate <- c(43.3870,40.8950,38.4670,36.1460,33.8310,31.5840,29.4160,27.3720)/1000 
+
+lm( mort_infant ~ year )
+lm( mort_underfive ~ year )
+lm( lifeExpectancy ~ year )
+lm( birthRate ~ year )
+
+x <- 2010:2050
+u1 <- 3.331741 - 0.001615*x  
+e <- -647.9416 + 0.3514*x  
+br <- 0.9651508 - 0.0004582*x
+u0 <- 2.0009122 - 0.0009672*x 
+
+plot(x,y)
+
+u1<-y
+
+
+# proportion of age group
+propAfrD <- c(0.0474053,0.116798,0.21925,0.616547) # AFR-D
+propAfrE <- c(0.0431509,0.113707,0.213958,0.629184) # AFR-E
+propEmrB <- c(0.020953,0.0751601,0.161268,0.742649) # EMR-B
+propEmrD <- c(0.0327963,0.0921835,0.182415,0.692605) # EMR-D
+# propSearB <- c(0.0120025,0.0457741,0.10205,0.840174) # searB
+propSearB <- c(0.0119976,0.046027,0.103271,0.838704) # searB
+propSearD <- c(0.0218476,0.0694405,0.148717,0.759995) # searD
+propWprB <- c(0.0165691,0.0589281,0.127559,0.796944)
+propWprD <- c(0.0245157,0.0764787,0.160106,0.7389)              
+propAmrB <- c(0.0198337,0.0705388,0.149157,0.760471)
+propAmrD <- c(0.0267894,0.0787226,0.161314,0.733174) 
+
+# overall incidence 
+irAfrD <- 2.0 # Beira, Mozambique and WER data
+irAfrE <- 4.00 # Beira, Mozambique and WER data
+irEmrB <- 0.10 # Assumption-based
+irEmrD <- 1.64 # Kolkata data
+irSearB <- 0.45 # Jakarta data
+irSearD <- 1.64 # Kolkata data
+irWprB <- 0.10 # Assumption-based
+irWprD <- 1.64 # Assumption-based
+irAmrB <- 0.10 # Assumption-based
+irAmrD <- 1.64 # Assumption-based
+
+# incidence rate ratios (irr) among age groups
+irrKolkata <- c(1, 0.978, 0.305, 0.129)
+irrJakarta <- c(1, 0.386, 0.072, 0.067)
+
+# replace the following by region  
+irr <- irrKolkata  # Kolkata or Jakarta
+
+# replace the following by region  
+prop <- propWprD  
+overallIr <- irWprD
+
+irMultiplier <- overallIr/(irr[1]*prop[1]+irr[2]*prop[2]+irr[3]*prop[3]+irr[4]*prop[4])
+irAge <- irMultiplier*irr
+irAge
+
+
+
+
+
+
+
+beta <- 159.21
+eps <- 101.389
+gamma <- 34.7619
+asym <- 0.9
+reda <- 0.9 
+rho <- 0.9 # fraction of contacts reserved within its own age group
+R11 <- beta*(1/gamma)*(eps/(eps+u1))*(asym*(1-reda)+ 1-asym)*rho
+R10 <- beta*(1/gamma)*(eps/(eps+u1))*(asym*(1-reda)+ 1-asym)*(1-rho)
+
+# total number of cholera cases
+afrD <- c(8479.51, 322.221)
+afrE <- c(28943.8 , 1099.86)
+emrB <- c(6.476, 0.246)
+emrD <- c(2901.58, 110.26)
+searB <- c(13.544, 0.515)
+searD <- c(3960.26, 150.49)
+wprB <- c(203.713, 7.741)
+wprD <- c(178.363, 6.778)
+amrB <- c(21.379, 0.812)
+amrD <- c(270.356, 10.274)
+years <- 35
+caseTotal <- afrD[1]+afrE[1]+emrB[1]+emrD[1]+searB[1]+searD[1]+wprB[1]+wprB[1]+amrB[1]+amrD[1]
+deathTotal <- afrD[2]+afrE[2]+emrB[2]+emrD[2]+searB[2]+searD[2]+wprB[2]+wprB[2]+amrB[2]+amrD[2]
+caseAnnual <- caseTotal/years
+deathAnnual <- deathTotal/years
+
+
+# sensitivity analyses
+VES <- seq(0.56,0.84,length.out=5)
+VEI <- seq(0.8*0.5,0.5*1.2,length.out=5)
+delta <- seq(0.8*0.9,0.95,length.out=5)
+eta <- seq(0.8*0.9,0.95,length.out=5)
+omega <- seq(2,20,length.out=5)
+gamma <- seq(1/7,1/14,length.out=5)
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
